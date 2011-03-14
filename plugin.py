@@ -935,6 +935,7 @@ def find_account(irc, msg, user=None):
         caller_self = False
     else:
         host = msg.host.replace('.','_').lower()
+        user = msg.nick
         caller_self = True
 
     #look up given user (if any)
@@ -984,9 +985,9 @@ def find_account(irc, msg, user=None):
     acc = legacy_userdb.get(user.lower(), None)
     if not acc:
         print "legacy not found user %s" % user
-        if user == msg.nick:
-            print "legacy fallback using %s" % user
-            return User(user)
+        #if user == msg.nick:
+        print "legacy fallback using %s" % user
+        return User(user)
         return None
     print "legacy found %s for %s" % (acc, user)
     if caller_self:
