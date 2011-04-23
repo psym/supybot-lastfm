@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import with_statement
 
-import os, socket, re
+import os, socket, re, sys
 import operator
 import threading
 import supybot.utils as utils
@@ -271,9 +271,10 @@ class Artist(object):
         data = fetch(api_url_base, params, None)
 
         artist_elem = data.find('artist')
-        bio = artist_elem.find('bio/summary').text or ""
+        bio = "bio is broke"
+        #bio = artist_elem.find('bio/summary').text or ""
         #bio = bio.encode('ascii', 'ignore')
-        bio = htmlToText(bio).replace('\n', ' ')
+        #bio = htmlToText(bio).replace('\n', ' ')
         #bio = unicode(bio,'utf-8','ignore')
 
         def safe_find_text(el, tag):
@@ -710,7 +711,10 @@ def fetch(url_base, key, args, use_cache=True):
         except socket.error, e:
             errno, errstr = sys.exc_info()[:2]
             print "socket error %s: %s" % (errno, errstr)
-            if retries: print "** retry **"
+            if not retries:
+                raise LastfmError(message="%s" % e)
+            else:
+                print "** retry **"
         except urllib2.URLError, e:     #<urlopen error timed out>
             if not retries:
                 raise LastfmError(message="%s" % e)
@@ -931,7 +935,11 @@ def find_account(irc, msg, user=None):
         return acc
             
     if user and user != msg.nick:
-        host = irc.state.nickToHostmask(user).replace('.','_').lower().split('@',1)[1]
+        try:
+            host = irc.state.nickToHostmask(user).replace('.','_').lower().split('@',1)[1]
+        except:
+            #user isnt an irc user we've seen, may not be a irc user at all
+            host = None
         caller_self = False
     else:
         host = msg.host.replace('.','_').lower()
@@ -953,23 +961,24 @@ def find_account(irc, msg, user=None):
 
     #look up caller host
     ##host = msg.host.replace('.','_').lower()
-    item = account_coll.find_one({'host': host, 'network': irc.network})
-    if item:
-        if caller_self:
-            nick = user.replace('.','_').lower()
-            if nick not in item['nick']:
-                other = find_from_nick(irc.network, nick)
-                if other:
-                    print "%s @ %s conflicts with %s @ %s" % (nick, host, other['nick'], other.get('host'))
-                    return item['account']
-                print item['nick']
-                item['nick'].append(nick)
-                account_coll.update({'host':host, 'network': irc.network}, item, upsert=True, multi=False)
-                print "update %s with nick %s" % (host, nick)
+    if host:
+        item = account_coll.find_one({'host': host, 'network': irc.network})
+        if item:
+            if caller_self:
+                nick = user.replace('.','_').lower()
+                if nick not in item['nick']:
+                    other = find_from_nick(irc.network, nick)
+                    if other:
+                        print "%s @ %s conflicts with %s @ %s" % (nick, host, other['nick'], other.get('host'))
+                        return item['account']
+                    print item['nick']
+                    item['nick'].append(nick)
+                    account_coll.update({'host':host, 'network': irc.network}, item, upsert=True, multi=False)
+                    print "update %s with nick %s" % (host, nick)
 
-        print "found %s for host %s on %s" % (item['account'], host, irc.network)
-        return User(item['account'])
-    print "host %s on %s not found" % (host, irc.network)
+            print "found %s for host %s on %s" % (item['account'], host, irc.network)
+            return User(item['account'])
+        print "host %s on %s not found" % (host, irc.network)
 
     #look up caller nick
     item = find_from_nick(irc.network, user)
@@ -1299,12 +1308,12 @@ class Lastfm(callbacks.Plugin):
         Returns users most comparable to you
         """
         #caller = self.nick_to_user(user, msg.nick)
-        caller = find_account(irc, msg)
+        caller = find_account(irc, msg, name)
         nicks = list(irc.state.channels[msg.args[0]].users)
         results = []
         
         for n in nicks:
-            other = find_account(n)
+            other = find_account(irc,msg, n)
             #other = self.nick_to_user(n)
             if not other or other.name == caller.name: continue
 
@@ -1314,10 +1323,10 @@ class Lastfm(callbacks.Plugin):
 
         results = [r for r in sorted(results, key=lambda x: x.stats.score, reverse=True) if r.stats.score > .5]
         if len(results):
-            out = "[%s.akin]: %s" % (user or msg.nick, ', '.join(  \
+            out = "[%s.akin]: %s" % (name or msg.nick, ', '.join(  \
                         ["%s (%.2f%%)" % (r.right.name, r.stats.score*100) for r in results]))
         else:
-            out = "[%s.akin]: i weep for your loneliness" % (user or msg.nick)
+            out = "[%s.akin]: i weep for your loneliness" % (name or msg.nick)
 
         self.reply(irc, msg.args, out)
             
@@ -1568,8 +1577,8 @@ class Lastfm(callbacks.Plugin):
         except: pass
 
     def eclectic_thread(self, irc, msg, args, name, num_top=20, num_sim=5):
-        account = name
-        #account = find_account(irc, msg, name)
+        #account = name
+        account = find_account(irc, msg, name)
         #account = self.nick_to_user(user, msg.nick)
         try:
             top20 = account.getTopArtists()[:num_top]
@@ -1655,7 +1664,7 @@ class Lastfm(callbacks.Plugin):
         """
         irc.reply("'%s' may take a while" % command_name(msg), private=True, notice=True)
         threading.Thread(target=self.utagged_thread, args=(irc, msg, args, period, user, tag)).start()
-    heardtag = wrap(heardtag, [optional('period'), 'user', 'tag'])
+    heardtag = wrap(heardtag, [optional('period'), 'something', 'tag'])
 
     def heardartist(self, irc, msg, args, artist):
         """<artist>
@@ -1828,11 +1837,10 @@ class Lastfm(callbacks.Plugin):
             nicks = account_coll.find({'network': irc.network, 'host': h}, {'_id': 0})
             if not nicks:
                 nicks = account_coll.find({'network': irc.netwok, 'nick': n}, {'_id': 0})
-        out = ", ".join(["%s" % n for n in nicks])
-        self.reply(irc, msg.args, out)
-        return
+        #out = ", ".join(["%s" % n for n in nicks])
+        #self.reply(irc, msg.args, out)
+        #return
         
-
         nicks = []
         for k,v in self.users.items():
             if v.lower() == account.name:
