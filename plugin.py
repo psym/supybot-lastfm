@@ -1274,7 +1274,7 @@ class Lastfm(callbacks.Plugin):
         out = "[artists]: %s" % ', '.join(["%s (%s)" %
             (a.name, ', '.join(["%s" % (t.name) for t in a.tags[:3]])) for a in artists[:5]])
         self.reply(irc, msg.args, out)
-    mt = wrap(multitagged, [commalist('text')])
+    mt = wrap(multitagged, [commalist('something')])
 
 #******************************** expensive start        
 #********************************
