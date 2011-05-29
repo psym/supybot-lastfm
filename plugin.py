@@ -1006,34 +1006,34 @@ def find_account(irc, msg, user=None):
                 upsert=True, multi=False)
     return User(acc)
 
+def doc_to_artist(doc):
+    if doc.get('stats'):
+        stats = Stats( listeners = doc.get('stats').get('listeners'),
+                       playcount = doc.get('stats').get('playcount') )
+    else: stats = None
+    if doc.get('tags'):
+        tags = [Tag(name=t['name'], count=t.get('count')) for t in doc.get('tags')]
+    else: tags = []
+    artist = Artist( doc['name'],
+                     mbid = doc.get('mbid'),
+                     url = doc.get('url'),
+                     stats = stats,
+                     tags = tags,
+                     bio = doc.get('bio') )
+    return artist
+def artist_to_doc(artist):
+    if artist.stats:
+        stats = {'listeners': artist.stats.listeners, 'playcount': artist.stats.playcount}
+    else: stats = None
+    if artist.tags:
+        tags = [{'name': t.name, 'count': t.count} for t in artist.tags]
+    else: tags = None
+    return {'name': artist.name, 'mbid': artist.mbid, 
+            'url': artist.url, 'bio': artist.bio, 'stats': stats, 'tags': tags}
+
 
 def find_artist(name):
     artist_coll = pymongo.Connection().anni.artist
-    def doc_to_artist(doc):
-        if doc.get('stats'):
-            stats = Stats( listeners = doc.get('stats').get('listeners'),
-                           playcount = doc.get('stats').get('playcount') )
-        else: stats = None
-        if doc.get('tags'):
-            tags = [Tag(name=t['name'], count=t.get('count')) for t in doc.get('tags')]
-        else: tags = []
-        artist = Artist( doc['name'],
-                         mbid = doc.get('mbid'),
-                         url = doc.get('url'),
-                         stats = stats,
-                         tags = tags,
-                         bio = doc.get('bio') )
-        return artist
-    def artist_to_doc(artist):
-        if artist.stats:
-            stats = {'listeners': artist.stats.listeners, 'playcount': artist.stats.playcount}
-        else: stats = None
-        if artist.tags:
-            tags = [{'name': t.name, 'count': t.count} for t in artist.tags]
-        else: tags = None
-        return {'name': artist.name, 'mbid': artist.mbid, 
-                'url': artist.url, 'bio': artist.bio, 'stats': stats, 'tags': tags}
-
     item = artist_coll.find_one({'key': name.lower(), 
                                  'expiration_date': {"$gte": datetime.datetime.utcnow()}})
     if item: 
@@ -1247,6 +1247,34 @@ class Lastfm(callbacks.Plugin):
             self.reply(irc, msg.args, out)
     tagged = wrap(tagged, ['tag'])
 
+    def multitagged(self, irc, msg, args, tags):
+        """<tag>[, <tag>...]
+        Returns artists with tags
+        """
+        coll = pymongo.Connection().anni.artist
+        print tags
+        items = coll.find({'tags.name': {'$all': tags}})
+        artists = [doc_to_artist(i) for i in items]
+        def gettag(artist, tag):
+            return filter(lambda t: t.name == tag, artist.tags)[0] or None
+
+        def do_sort(artists, tag):
+            def keyfun(ar): return gettag(ar, tag).count or 0
+            return sorted(artists, key=keyfun, reverse=True)
+
+        for t in reversed(tags):
+            artists = filter(lambda a: gettag(a,t).count > 10, artists)
+            artists = do_sort(artists, t)
+            
+        for a in artists[:5]:
+            def tag(ar, ta):
+                return filter(lambda t: t.name == ta, ar.tags)[0]
+            print "%s: %s" % (a.name, ', '.join(["%s (%s)" % (t.name, t.count) for t in [tag(a,at) for at in tags]]))
+
+        out = "[artists]: %s" % ', '.join(["%s (%s)" %
+            (a.name, ', '.join(["%s" % (t.name) for t in a.tags[:3]])) for a in artists[:5]])
+        self.reply(irc, msg.args, out)
+    mt = wrap(multitagged, [commalist('text')])
 
 #******************************** expensive start        
 #********************************
