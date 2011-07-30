@@ -31,7 +31,7 @@ from error import *
 discogs_key = "8fb0a82cbf"
 discogs_url_base = "http://discogs/com/"
 api_key = "1bf12731bd3b7a5a821d9455362896b4"
-api_url_base = "http://ws.audioscrobbler.com/2.0/?api_key=%s" % api_key
+api_url_base = "http://localhost:6081/2.0/?api_key=%s" % api_key
 db = pymongo.Connection().anni.cache
 legacy_userdb = DictDB(os.path.join(conf.supybot.directories.data(), 'users.pklz'), mode=0600)
 
@@ -670,6 +670,8 @@ def find_expires(headers):
 
 #def fetch(db, url_base, key, args, use_cache=True):
 def fetch(url_base, key, args, use_cache=True):
+    use_cache = False
+
     def cache_find(db, key):
         now = datetime.datetime.utcnow()
         return db.find_one(dict(key.items() + [('expires', {"$gte": now})]))
@@ -1674,7 +1676,6 @@ class Lastfm(callbacks.Plugin):
         """[o|w|3|6|12|m|d <days>] [user]
         Returns top artists for [user] over period
         """
-        irc.reply("'%s' may take a while" % command_name(msg), private=True, notice=True)
         threading.Thread(target=self.myartists_thread, args=(irc, msg, args, period, user)).start()
     myartists = wrap(myartists, [optional('period'), optional('something')])
 
