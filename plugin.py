@@ -15,6 +15,7 @@ import supybot.conf as conf
 from supybot.utils.web import htmlToText
 #from html2text import html2text as htmlToText
 import time, datetime, getopt
+from time import time, mktime
 
 from collections import defaultdict
 
@@ -122,16 +123,12 @@ addConverter('user', userConverter)
 
 def normalReply(irc, mod, msg, to=None):
     irc.reply(msg.encode('utf-8', 'ignore'), to=to)
-#    for msg in args:
-#        irc.reply(msg.encode('utf-8'))
 
 def specialReply(irc, mod, msg, to=None):
     if( len(mod) >= 2 and len(mod[1]) > 2 and 
         mod[1][0] == mod[1][1] and 
         mod[1][0] in conf.supybot.reply.whenAddressedBy.chars() ):
         irc.reply(msg.encode('utf-8', 'ignore'), private=True, notice=True)
-#        for msg in args:
-#            irc.reply(msg.encode('utf-8'), private=True, notice=True)
     else:
         normalReply(irc, None, msg, to=to)
 
@@ -213,7 +210,7 @@ class Tag(object):
                    'limit': limit,
                    'page': page
                  }
-        data = fetch(api_url_base, params, None, use_cache=False)
+        data = fetch(api_url_base, params, None)
 
         return [ Tag( name = tag_elem.find('name').text,
                       count = tag_elem.find('count').text,
@@ -494,13 +491,15 @@ class User(object):
                          stats = Stats( rank = artist_elem.attrib['rank'], playcount = artist_elem.find('playcount').text )
                        ) for artist_elem in data.findall('topartists/artist') ]
  
-    def getRecentTracks(self, limit=None, page=None, use_cache=True):
+    def getRecentTracks(self, start=None, end=None, limit=None, page=None):
         params = { 'method': 'user.getRecentTracks', 
                    'user': self.name,
+                   'from': start,
+                   'to': end,
                    'limit': limit,
                    'page': page
                  }
-        data = fetch(api_url_base, params, None, use_cache=use_cache)
+        data = fetch(api_url_base, params, None)
     
         tracks = data.findall('recenttracks/track')
         return [ Track( name = track_elem.find('name').text, 
@@ -613,6 +612,7 @@ def build_url(url, extra_params):
     return urlparse.urlunparse((scheme, netloc, path, params, query, fragment))
 
 def check_xml(xml):
+    #data = ElementTree.XML(xml)
     data = ElementTree.XML(xml.encode('utf-8'))
 
     if data.get('status') != "ok":
@@ -623,76 +623,16 @@ def check_xml(xml):
             raise error_map[code](code = code, message = message)
     return data
 
-#def fetch_url(url, use_cache=True):
-#    print url
-#
-#    for retries in range(3, 0, -1):
-#        try:
-#            if use_cache:
-#                return check_xml( str(cache[url]) )
-#
-#            opener = urllib2.build_opener()
-#            opener.addheaders = [('User-agent', 'Mozilla/5.0')]
-#            response = opener.open(url)
-#            url_data = response.read()
-#        except urllib2.HTTPError, e:
-#            url_data = e.read()
-#        except urllib2.URLError, e:     #<urlopen error timed out>
-#            if not retries:
-#                raise LastfmError(message="%s" % e)
-#            else:
-#                print "*** retry ***"
-#            continue
-#        break
-#
-#    return check_xml(url_data)
+def to_unicode(obj, encoding='utf-8'):
+    if isinstance(obj, basestring):
+        if not isinstance(obj, unicode):
+            obj = unicode(obj,encoding)
+    return obj
 
-import re
-from time import time, mktime
-from rfc822 import parsedate
-re_max_age=re.compile('max-age\s*=\s*(\d+)', re.I)
-def find_expires(headers):
-    try:
-        match = re_max_age.match(headers['cache-control'])
-        return datetime.datetime.utcnow() + datetime.timedelta(seconds=int(match.group(1)))
-    except Exception, e:
-        print "find_expires: %s" % e
-
-    try:
-        start = mktime(parsedate(headers['date']))
-        end = mktime(parsedate(headers['expires']))
-        return datetime.datetime.utcnow() + datetime.timedelta(seconds=(end - start))
-    except Exception,e :
-        print "find_expires: %s" % e
-
-    print "no expires"
-    return datetime.datetime.utcnow()
-
-#def fetch(db, url_base, key, args, use_cache=True):
-def fetch(url_base, key, args, use_cache=True):
-    use_cache = False
-
-    def cache_find(db, key):
-        now = datetime.datetime.utcnow()
-        return db.find_one(dict(key.items() + [('expires', {"$gte": now})]))
-
-    def cache_update(db, key, data, expires):
-        item = dict(key.items() + [('date', datetime.datetime.utcnow()), 
-                                   ('expires', expires), ('data', data)])
-        db.update(key, item, upsert=True, multi=False)
-
+def fetch(url_base, key, args):
     args = args or dict()
     url = build_url(url_base, dict(key.items() + args.items()))
     print url 
-
-    try:
-        if use_cache:
-            url_data = cache_find(db, key)
-            if url_data:
-                print "using cache, expires %s" % url_data['expires']
-                return check_xml(url_data['data'])
-    except:
-        pass
 
     for retries in range(3, 0, -1):
         try:
@@ -701,12 +641,8 @@ def fetch(url_base, key, args, use_cache=True):
             response = opener.open(url)
             url_data = response.read()
             url_data = url_data.decode('utf-8')
+            #url_data = to_unicode(url_data)
 
-            if use_cache:
-                headers = response.info()
-                expires = find_expires(headers)
-                cache_update(db, key, url_data, expires)
-                print "new item, expires %s" % expires
             break
         except urllib2.HTTPError, e:
             url_data = e.read()
@@ -717,7 +653,7 @@ def fetch(url_base, key, args, use_cache=True):
                 raise LastfmError(message="%s" % e)
             else:
                 print "** retry **"
-        except urllib2.URLError, e:     #<urlopen error timed out>
+        except Exception, e:     #<urlopen error timed out>
             if not retries:
                 raise LastfmError(message="%s" % e)
             else:
@@ -1090,10 +1026,6 @@ class Lastfm(callbacks.Plugin):
         #print "acc: %s"%acc
         return User(acc)
     
-
-    def sync(self, irc, msg, args):
-        """sync"""
-        self.users.sync()
 
 
     viking_line = 0
@@ -1720,7 +1652,7 @@ class Lastfm(callbacks.Plugin):
             if not account: continue
 
             try:
-                track = account.getRecentTracks(limit=1, use_cache=False)
+                track = account.getRecentTracks(limit=1)
                 if track[0].now_playing:
                     time_tag = now_playing_position(track)
                     tags = Artist(track[0].artist.name).getTopTags()
@@ -1759,7 +1691,7 @@ class Lastfm(callbacks.Plugin):
             try:
                 account = find_account(irc, msg, user)
                 #account = self.nick_to_user(user, msg.nick)
-                track = account.getRecentTracks(limit=1, use_cache=False)
+                track = account.getRecentTracks(limit=1)
                 start_time = None
 
                 if use_nick:
@@ -1804,7 +1736,7 @@ class Lastfm(callbacks.Plugin):
 #        for user in users:
 #            try:
 #                account = self.nick_to_user(user, msg.nick)
-#                track = account.getRecentTracks(limit=1, use_cache=False)
+#                track = account.getRecentTracks(limit=1)
 #                if use_nick:
 #                    out = "[%s.playing]:" % msg.nick
 #                else:
