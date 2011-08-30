@@ -1153,19 +1153,28 @@ class Lastfm(callbacks.Plugin):
 
 
     def tags(self, irc, msg, args, artist):
-        """<artist>
-        Returns top tags for artist
+        """[artist]
+        Returns top tags for artist or your currently playing track
         """
+        print type(irc)
+        if not artist:
+            try:
+                track = account.getRecentTracks(limit=1)
+                if track[0].now_playing:
+                    artist = find_artist(track[0].artist.name)
+            except Exception:
+                help = callbacks.getHelp(self.tags)
+                self.reply(irc, msg.args, help)
+                #print usage
+                return
         try:
-            #tags = artist.getTopTags()
-            #out = "[%s.tags]: %s" % (artist.name, ', '.join( ["%s (%s)" % (t.name, t.count) for t in tags] ) or 'none')
             tags = ', '.join(['%s (%s)' % (t.name, t.count) for t in artist.tags])
             out = '[%s.tags]: %s' % (artist.name, tags)
         except LastfmError, e:
             out = error_msg(msg, e)
         with mores(250):
             self.reply(irc, msg.args, out)
-    tags = wrap(tags, ['artist'])
+    tags = wrap(tags, [optional('artist')])
 
     
     def tagged(self, irc, msg, args, tag):
@@ -1174,7 +1183,7 @@ class Lastfm(callbacks.Plugin):
         """
         try:
             artists = tag.getTopArtists()
-            out = "[%s.artists]: %s" % (tag.name, ', '.join( ["%s" % (a.name) for a in artists] ) or 'none')
+            out = u"[%s.artists]: %s" % (tag.name, ', '.join( ["%s" % (a.name) for a in artists] ) or 'none')
         except LastfmError, e:
             out = error_msg(msg, e)
         with mores(250):
