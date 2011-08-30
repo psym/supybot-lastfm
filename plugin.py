@@ -1843,6 +1843,7 @@ class Lastfm(callbacks.Plugin):
         """<user1> [user2]
         Compares user1 to user2 or requester
         """
+        ignore_tags = ["electronic", "experimental", "electronica", "seen live"]
         if user2:
             #left, right = self.nick_to_user(user1), self.nick_to_user(user2)
             left, right = find_account(irc, msg, user1), find_account(irc, msg, user2)
@@ -1855,7 +1856,8 @@ class Lastfm(callbacks.Plugin):
             tags = defaultdict(lambda: 0)
             for a in taste.artists:
                 for t in a.tags[:5]:
-                    tags[t.name] += 1
+                    if t.name not in ignore_tags:
+                        tags[t.name] += 1
             tags = sorted(tags.iteritems(), key = operator.itemgetter(1), reverse=True)
 
             out = "[%s.compare.%s]: %s (%.2f%%) %s feat. %s" % \
