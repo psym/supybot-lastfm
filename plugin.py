@@ -13,7 +13,6 @@ import supybot.ircmsgs as ircmsgs
 import supybot.conf as conf
 
 from supybot.utils.web import htmlToText
-#from html2text import html2text as htmlToText
 import time, datetime, getopt
 from time import time, mktime
 
@@ -26,12 +25,9 @@ import xml.etree.cElementTree as ElementTree
 
 from dictdb import DictDB
 import pymongo
-#lastfm error
+
 from error import *
 
-# localsettings.py should contain
-# api_key = "your last fm key"
-# discogs_key = "your discogs key"
 from localsettings import *
 discogs_url_base = "http://discogs/com/"
 api_url_base = "http://localhost:6081/2.0/?api_key=%s" % api_key
@@ -268,7 +264,6 @@ class Artist(object):
                    'autocorrect': autocorrect
                  }
         data = fetch(api_url_base, params, None)
-
         artist_elem = data.find('artist')
 
         def safe_find_text(el, tag):
@@ -290,6 +285,7 @@ class Artist(object):
                         bio = ""
                      )
 
+
     def getBio(self, username=None, lang=None, autocorrect=1):
         params = { 'method': 'artist.getInfo',
                    'artist': self.name,
@@ -300,11 +296,11 @@ class Artist(object):
                  }
         data = fetch(api_url_base, params, None)
         artist_elem = data.find('artist')
+
         bio = artist_elem.find('bio/summary').text or ""
         bio = bio.encode('ascii', 'ignore')
         bio = htmlToText(bio).replace('\n', ' ')
         bio = unicode(bio,'utf-8','ignore')
-
 
         return Artist(artist_elem.find('name').text, bio = bio)
 
@@ -341,7 +337,15 @@ class Artist(object):
 
 
 class Track(object):
-    def __init__(self, name=None, artist=None, album=None, mbid=None, url=None, stats=None, played_on=None, now_playing=None, duration=0):
+    def __init__(self, name=None,
+                       artist=None,
+                       album=None,
+                       mbid=None,
+                       url=None,
+                       stats=None,
+                       played_on=None,
+                       now_playing=None,
+                       duration=0):
         self.name = name
         self.artist = artist
         self.album = album
@@ -380,36 +384,29 @@ class Track(object):
 def now_playing_position(tracks):
     def make_time_tag(start_time, duration_ms):
         cur = datetime.datetime.now() - start_time
-        print "cur delta %s" % cur
         cur_m = cur.days / (24 * 60) + cur.seconds / 60
         cur_s = cur.seconds - (cur.seconds / 60 * 60)
-        print "cur pos is %2d:%2d" % (cur_m, cur_s)
 
         cur_ms = cur_m * 60000 + cur_s * 1000
         if cur_ms > duration_ms:
-            print "%d > %d" % (cur_ms, duration_ms)
             return ""
 
         minutes = duration_ms / 60000
         duration_ms = duration_ms - minutes * 60000
         seconds = duration_ms / 1000
-        print "this track duration is %2d.%2d" % (minutes, seconds)
 
         return "[%d:%02d/%d:%02d]" % (cur_m, cur_s, minutes, seconds)
 
     time_tag = ""
-    if len(tracks) > 1:
-        try:
-            last_track = Track(name=tracks[1].name, artist=tracks[1].artist).getInfo()
-            print "last track duration: %d" % last_track.duration
-            start_time = tracks[1].played_on + datetime.timedelta(milliseconds=last_track.duration)
-            print "start time %s" % start_time
+    try:
+        last_track = Track(name=tracks[1].name, artist=tracks[1].artist).getInfo()
+        start_time = tracks[1].played_on + datetime.timedelta(milliseconds=last_track.duration)
 
-            now_track = Track(name=tracks[0].name, artist=tracks[0].artist).getInfo()
-            time_tag = make_time_tag(start_time, now_track.duration)
-        except LastfmError, e:
-            print "now_playing_position: %s" % str(e)
-            pass
+        now_track = Track(name=tracks[0].name, artist=tracks[0].artist).getInfo()
+        time_tag = make_time_tag(start_time, now_track.duration)
+    except LastfmError, e:
+        print "now_playing_position: %s" % str(e)
+        pass
 
     return time_tag
 
@@ -432,8 +429,7 @@ class Library(object):
         self.page = page
         self.total_pages = total_pages
 
-#max/default limit=50
-def library_getArtists(user, limit=None, page=None):
+def library_getArtists(user, limit=50, page=None):
     params = { 'method': 'library.getArtists',
                'user': user.name,
                'limit': limit,
@@ -444,7 +440,8 @@ def library_getArtists(user, limit=None, page=None):
     return [ Artist( artist_elem.find('name').text,
                      mbid = artist_elem.find('mbid').text,
                      url = artist_elem.find('url').text,
-                     stats = Stats( rank = artist_elem.attrib['rank'], playcount = artist_elem.find('playcount').text )
+                     stats = Stats( rank = artist_elem.attrib['rank'],
+                                    playcount = artist_elem.find('playcount').text )
                    ) for artist_elem in data.findall('artists/artist') ]
 
 def library_getAllArtists(user):
@@ -459,7 +456,8 @@ def library_getAllArtists(user):
         artists.append( [ Artist( artist_elem.find('name').text,
                                   mbid = artist_elem.find('mbid').text,
                                   url = artist_elem.find('url').text,
-                                  stats = Stats( rank = artist_elem.attrib['rank'], playcount = artist_elem.find('playcount').text )
+                                  stats = Stats( rank = artist_elem.attrib['rank'],
+                                                 playcount = artist_elem.find('playcount').text )
                                 ) for artist_elem in data.findall('artists/artist') ] )
         if have_pages:
             data = fetch(api_url_base, params, None)
@@ -479,9 +477,7 @@ class User(object):
         return "<User: %s>" % self.name
 
     def getInfo(self):
-        params = { 'method': 'user.getInfo',
-                   'user': self.name
-                 }
+        params = { 'method': 'user.getInfo', 'user': self.name }
         data = fetch(api_url_base, params, None)
 
         user_elem = data.find('user')
@@ -504,7 +500,8 @@ class User(object):
         return [ Artist( artist_elem.find('name').text,
                          mbid = artist_elem.find('mbid').text,
                          url = artist_elem.find('url').text,
-                         stats = Stats( rank = artist_elem.attrib['rank'], playcount = artist_elem.find('playcount').text )
+                         stats = Stats( rank = artist_elem.attrib['rank'],
+                                        playcount = artist_elem.find('playcount').text )
                        ) for artist_elem in data.findall('topartists/artist') ]
 
     def getRecentTracks(self, start=None, end=None, limit=None, page=None):
@@ -516,14 +513,16 @@ class User(object):
                    'page': page
                  }
         data = fetch(api_url_base, params, None)
-
         tracks = data.findall('recenttracks/track')
+
         return [ Track( name = track_elem.find('name').text,
                         artist = Artist( track_elem.find('artist').text,
                                          track_elem.find('artist').attrib['mbid'] ),
-                        played_on = datetime.datetime.fromtimestamp( float( hasattr(track_elem.find('date'), 'attrib') and
-                                                                            track_elem.find('date').attrib['uts'] or time() ) ),
-                        now_playing = hasattr(track_elem.attrib, 'get') and track_elem.attrib.get('nowplaying')
+                        played_on = datetime.datetime.fromtimestamp(
+                            float( hasattr(track_elem.find('date'), 'attrib') and
+                                   track_elem.find('date').attrib['uts'] or time() ) ),
+                        now_playing = hasattr(track_elem.attrib, 'get') and
+                                      track_elem.attrib.get('nowplaying')
                       ) for track_elem in tracks ]
 
 
@@ -628,7 +627,6 @@ def build_url(url, extra_params):
     return urlparse.urlunparse((scheme, netloc, path, params, query, fragment))
 
 def check_xml(xml):
-    #data = ElementTree.XML(xml)
     data = ElementTree.XML(xml.encode('utf-8'))
 
     if data.get('status') != "ok":
@@ -638,12 +636,6 @@ def check_xml(xml):
         if code in error_map.keys():
             raise error_map[code](code = code, message = message)
     return data
-
-def to_unicode(obj, encoding='utf-8'):
-    if isinstance(obj, basestring):
-        if not isinstance(obj, unicode):
-            obj = unicode(obj,encoding)
-    return obj
 
 def fetch(url_base, key, args):
     args = args or dict()
@@ -657,7 +649,6 @@ def fetch(url_base, key, args):
             response = opener.open(url)
             url_data = response.read()
             url_data = url_data.decode('utf-8')
-            #url_data = to_unicode(url_data)
 
             break
         except urllib2.HTTPError, e:
@@ -677,22 +668,6 @@ def fetch(url_base, key, args):
 
     return check_xml(url_data)
 
-
-def discogs_fetch(url, use_cache=True):
-    print url
-
-    try:
-        if use_cache:
-            return str(cache[url])
-
-        opener = urllib2.build_opener()
-        opener.addheaders = [('User-agent', 'Mozilla/5.0')]
-        response = opener.open(url)
-        url_data = response.read()
-    except urllib2.HTTPError, e:
-        url_data = e.read()
-
-    return url_data
 
 def getWeeklyChartList(target):
     valid_types = { User: 'user', Group: 'group', Tag: 'tag' }
@@ -725,13 +700,15 @@ def getWeeklyArtistChart(target, start=None, end=None):
                  }
         data = fetch(api_url_base, params, None)
 
-        artist_charts.append( WeeklyArtistChart( start = c.start,
-                                                 end = c.end,
-                                                 artists = [ Artist( artist_elem.find('name').text,
-                                                                     stats = Stats( playcount = artist_elem.find('playcount').text )
-                                                                   ) for artist_elem in data.findall('weeklyartistchart/artist') ]
-                                               )
-                            )
+        artist_charts.append(
+                WeeklyArtistChart(
+                    start = c.start,
+                    end = c.end,
+                    artists = [ Artist( artist_elem.find('name').text,
+                        stats = Stats( playcount = artist_elem.find('playcount').text )
+                    ) for artist_elem in data.findall('weeklyartistchart/artist') ]
+                )
+        )
     return artist_charts
 
 def compileArtists(charts, with_tags=False):
@@ -760,7 +737,6 @@ def topTagsFromChart(target, start=None, end=None):
             artist_count += 1
             total_playcount += artist.stats.playcount
             tag_count = 0
-            #artist_top_tags[artist.name] = artist.getTopTags()
             artist_top_tags[artist.name] = find_artist(artist.name).tags
 
             for tag in artist_top_tags[artist.name]:
@@ -779,7 +755,6 @@ def topTagsFromChart(target, start=None, end=None):
             tag_count = 0
             weighted_tfidfs = {}
             if artist.name not in artist_top_tags.keys():
-                #artist_top_tags[artist.name] = artist.getTopTags()
                 artist_top_tags[artist.name] = find_artist(artist.name).tags
                 print "shouldn be here! (%s)" % artist.name
             for tag in artist_top_tags[artist.name]:
@@ -826,9 +801,6 @@ def taste_compare(left, right, limit=None):
 
     artists = data.find('comparison/result/artists')
     return Tasteometer( left = left, right = right,
-                        #artists = [ Artist( artist_elem.find('name').text,
-                        #                    url = artist_elem.find('url').text
-                        #                  ) for artist_elem in artists.findall('artist') ],
                         artists = [ find_artist(a.find('name').text) for a in artists.findall('artist')],
                         stats = Stats( score = data.find('comparison/result/score').text,
                                        matches = artists.attrib['matches']
@@ -836,7 +808,6 @@ def taste_compare(left, right, limit=None):
                       )
 
 
-# hit/miss not always accurate
 class CachePerf(object):
     def __init__(self):
         self.start_time = time()
@@ -991,7 +962,6 @@ def find_artist(name):
     item = artist_coll.find_one({'key': name.lower(),
                                  'expiration_date': {"$gte": datetime.datetime.utcnow()}})
     if item:
-        #print "using artist cache, expires %s" % item['expiration_date']
         return doc_to_artist(item)
 
     item = Artist(name).getInfo()
@@ -1008,7 +978,7 @@ def find_artist(name):
     return item
 
 class Lastfm(callbacks.Plugin):
-    """interface to last.fm.  See !commands for a list of commands."""
+    """interface to last.fm.  See !list Lastfm for a list of commands."""
     threaded = True
 
     users = DictDB(os.path.join(conf.supybot.directories.data(), 'users.pklz'), mode=0600)
@@ -1043,7 +1013,6 @@ class Lastfm(callbacks.Plugin):
         return User(acc)
 
 
-
     viking_line = 0
     def trelleborg(self, irc, msg, args):
         self.reply(irc, msg.args, immigrant_song[self.viking_line % len(immigrant_song)])
@@ -1056,7 +1025,6 @@ class Lastfm(callbacks.Plugin):
 
     def mongo(self, irc, msg, args, user):
         print find_account(irc, msg, user)
-
         #self.reply(irc, msg.args, out)
     mongo = wrap(mongo, [optional('user')])
 
@@ -1066,8 +1034,11 @@ class Lastfm(callbacks.Plugin):
         artist.getInfo()
         """
         try:
-        #    artist = artist.getInfo()
-            out = "[%s.artist]: %d listeners. tagged: %s" % (artist.name, artist.stats.listeners, ', '.join( ["%s"%(t.name) for t in artist.tags[:4]] ))
+            out = "[%s.artist]: %d listeners. tagged: %s" % (
+                    artist.name,
+                    artist.stats.listeners,
+                    ', '.join( ["%s"%(t.name) for t in artist.tags[:4]] )
+                )
         except LastfmError, e:
             out = error_msg(msg, e)
         self.reply(irc, msg.args, out)
@@ -1079,7 +1050,9 @@ class Lastfm(callbacks.Plugin):
         """
         try:
             albums = artist.getTopAlbums()
-            out = "[%s.albums]: %s" % (artist.name, ', '.join( ["%s [%d]"%(a.name, a.stats.playcount) for a in albums]) or 'none')
+            out = "[%s.albums]: %s" % (
+                    artist.name,
+                    ', '.join( ["%s [%d]"%(a.name, a.stats.playcount) for a in albums]) or 'none')
         except LastfmError, e:
             out = error_msg(msg, e)
         self.reply(irc, msg.args, out)
@@ -1092,7 +1065,9 @@ class Lastfm(callbacks.Plugin):
         """
         try:
             similar = artist.getSimilar(limit=8)
-            out = "[%s.similar]: %s" % (artist.name, ', '.join( ["%s (%d)"%(s.name,s.stats.match*100) for s in similar] ) or 'nothing')
+            out = "[%s.similar]: %s" % (
+                    artist.name,
+                    ', '.join( ["%s (%d)"%(s.name,s.stats.match*100) for s in similar] ) or 'nothing')
         except LastfmError, e:
             out = error_msg(msg, e)
         self.reply(irc, msg.args, out)
@@ -1109,7 +1084,6 @@ class Lastfm(callbacks.Plugin):
 
         try:
             account = find_account(irc, msg, name)
-            #account = self.nick_to_user(user, msg.nick)
             tracks = account.getRecentTracks()
             now = datetime.datetime.now()
             out = "[%s.recent]: %s" % (account.name, ', '.join( ["%s - %s (%d hrs)" %  \
@@ -1135,8 +1109,8 @@ class Lastfm(callbacks.Plugin):
 
         rank = float(tag.count) / float(top_tag.count) * 100.0
 
-        self.reply(irc, msg.args, "[%s.tag_rank]: %.2f  (%d / %d)" % (tag.name, rank, tag.count, top_tag.count))
-
+        self.reply(irc, msg.args,
+                "[%s.tag_rank]: %.2f  (%d / %d)" % (tag.name, rank, tag.count, top_tag.count))
     tagrank = wrap(tagrank, ['text'])
 
 
@@ -1199,7 +1173,9 @@ class Lastfm(callbacks.Plugin):
         """
         try:
             artists = tag.getTopArtists()
-            out = u"[%s.artists]: %s" % (tag.name, ', '.join( ["%s" % (a.name) for a in artists] ) or 'none')
+            out = u"[%s.artists]: %s" % (
+                    tag.name,
+                    ', '.join( ["%s" % (a.name) for a in artists] ) or 'none')
         except LastfmError, e:
             out = error_msg(msg, e)
         with mores(250):
@@ -1211,7 +1187,6 @@ class Lastfm(callbacks.Plugin):
         Returns artists with tags
         """
         coll = pymongo.Connection().anni.artist
-        print tags
         items = coll.find({'tags.name': {'$all': tags}})
         artists = [doc_to_artist(i) for i in items]
         def gettag(artist, tag):
@@ -1244,7 +1219,10 @@ class Lastfm(callbacks.Plugin):
         try:
             tags = topTagsFromChart(group, period['start'], period['end'])
 
-            out = "[%s.tags %s]: %s" % (group.name, period['period'], ', '.join( ["%s"  % (t.name) for t in tags] ) or 'none')
+            out = "[%s.tags %s]: %s" % (
+                    group.name,
+                    period['period'],
+                    ', '.join( ["%s"  % (t.name) for t in tags] ) or 'none')
         except LastfmError, e:
             out = error_msg(msg, e)
         self.reply(irc, msg.args, out)
@@ -1259,7 +1237,6 @@ class Lastfm(callbacks.Plugin):
                                                                       end_chart.end.strftime("%m-%d-%y")
                                                                     )) )
             print out
-            #self.reply(irc, msg.args, out)
         except: pass
 
 
@@ -1287,21 +1264,18 @@ class Lastfm(callbacks.Plugin):
                                                                       end_chart.end.strftime("%m-%d-%y")
                                                                     )) )
             print out
-            #self.reply(irc, msg.args, out)
         except: pass
 
     def akin_thread(self, irc, msg, args, name):
         """[user]
         Returns users most comparable to you
         """
-        #caller = self.nick_to_user(user, msg.nick)
         caller = find_account(irc, msg, name)
         nicks = list(irc.state.channels[msg.args[0]].users)
         results = []
 
         for n in nicks:
             other = find_account(irc,msg, n)
-            #other = self.nick_to_user(n)
             if not other or other.name == caller.name: continue
 
             try:
@@ -1741,47 +1715,6 @@ class Lastfm(callbacks.Plugin):
     np = wrap(np2, [optional('something'), optional('callerInGivenChannel')])
 
 
-#
-#    def np(self, irc, msg, args, users, channel):
-#        """[user, ...] or [channel]
-#        Returns now playing for [users], or you in [channel]
-#        """
-#        use_nick=False
-#        if users:
-#            users = list(set(users.split(' ')))
-#        else:
-#            users = list( (msg.nick, ) )
-#
-#        if channel != msg.channel:
-#            users = list( (msg.nick, ) )
-#            use_nick=True
-#            if users[0] not in irc.state.channels[channel].users:
-#                channel = None
-#
-#        for user in users:
-#            try:
-#                account = self.nick_to_user(user, msg.nick)
-#                track = account.getRecentTracks(limit=1)
-#                if use_nick:
-#                    out = "[%s.playing]:" % msg.nick
-#                else:
-#                    out = "[%s.playing]:" % account.name
-#                if track and track[0] and track[0].now_playing:
-#                    tags = Artist(track[0].artist.name).getTopTags()
-#                    if len(tags):
-#                        tag_str = "(%s)" % ', '.join([t.name for t in tags[:3]])
-#                    else:
-#                        tag_str = ""
-#                    result = "%s - %s  %s" % ( track[0].artist.name, track[0].name, tag_str)
-#                else:
-#                    result = "nothing"
-#                out = "%s %s" % (out, result)
-#            except LastfmError, e:
-#                out = error_msg(msg, e)
-#            self.reply(irc, msg.args, out, to=channel)
-#    np = wrap(np, [optional('user'), optional('callerInGivenChannel')])
-
-
     def account(self, irc, msg, args, name):
         """<account>
         Associates Last.FM <account> with your nick.
@@ -1802,9 +1735,6 @@ class Lastfm(callbacks.Plugin):
 
         account_coll.update({'host':host, 'network': irc.network}, item, upsert=True, multi=False)
         self.error(irc, "%s@%s set account to %s" % (nick, host, name))
-        #self.users[msg.nick.lower()] = name
-        #self.error(irc, "Set account for %s to %s"%(msg.nick, name))
-        #self.users.sync()
     account = wrap(account, ['something'])
 
 
@@ -1812,8 +1742,6 @@ class Lastfm(callbacks.Plugin):
         """[user]
         get profile for user.
         """
-        #nick = name or msg.nick
-        #account = self.nick_to_user(name, msg.nick)
         account_coll = pymongo.Connection().anni.account
         account = find_account(irc, msg, name)
         n,h = (name or msg.nick).replace('.','_').lower(), msg.host.replace('.','_').lower()
@@ -1823,9 +1751,6 @@ class Lastfm(callbacks.Plugin):
             nicks = account_coll.find({'network': irc.network, 'host': h}, {'_id': 0})
             if not nicks:
                 nicks = account_coll.find({'network': irc.netwok, 'nick': n}, {'_id': 0})
-        #out = ", ".join(["%s" % n for n in nicks])
-        #self.reply(irc, msg.args, out)
-        #return
 
         nicks = []
         for k,v in self.users.items():
@@ -1862,10 +1787,8 @@ class Lastfm(callbacks.Plugin):
         """
         ignore_tags = ["electronic", "experimental", "electronica", "seen live"]
         if user2:
-            #left, right = self.nick_to_user(user1), self.nick_to_user(user2)
             left, right = find_account(irc, msg, user1), find_account(irc, msg, user2)
         else:
-            #left, right = self.nick_to_user(msg.nick), self.nick_to_user(user1)
             left, right = find_account(irc, msg), find_account(irc, msg, user1)
 
         try:
@@ -1892,8 +1815,6 @@ class Lastfm(callbacks.Plugin):
         """<user> <artist>
         Returns artists from list that user has listened to
         """
-        #account = self.nick_to_user(user)
-
         try:
             taste = taste_compare(account, artist)
             if len(taste.artists) == 0:
@@ -1913,7 +1834,6 @@ class Lastfm(callbacks.Plugin):
         """[user]
         Returns neighbours of [user]
         """
-        #account = self.nick_to_user(user, msg.nick)
         account = find_account(irc, msg, user)
 
         try:
