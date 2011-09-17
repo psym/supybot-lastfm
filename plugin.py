@@ -29,9 +29,11 @@ import pymongo
 #lastfm error
 from error import *
 
-discogs_key = "8fb0a82cbf"
+# localsettings.py should contain
+# api_key = "your last fm key"
+# discogs_key = "your discogs key"
+from localsettings import *
 discogs_url_base = "http://discogs/com/"
-api_key = "1bf12731bd3b7a5a821d9455362896b4"
 api_url_base = "http://localhost:6081/2.0/?api_key=%s" % api_key
 db = pymongo.Connection().anni.cache
 legacy_userdb = DictDB(os.path.join(conf.supybot.directories.data(), 'users.pklz'), mode=0600)
