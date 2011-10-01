@@ -23,6 +23,9 @@ import urllib, urllib2, urlparse
 import BeautifulSoup
 import xml.etree.cElementTree as ElementTree
 
+#for multitagged
+import csv
+
 from dictdb import DictDB
 import pymongo
 
@@ -1182,10 +1185,13 @@ class Lastfm(callbacks.Plugin):
             self.reply(irc, msg.args, out)
     tagged = wrap(tagged, ['tag'])
 
-    def multitagged(self, irc, msg, args, tags):
+    def multitagged(self, irc, msg, args, text):
         """<tag>[, <tag>...]
         Returns artists with tags
         """
+        tags = [t for t in csv.reader([text], skipinitialspace=True)][0]
+        print tags
+
         coll = pymongo.Connection().anni.artist
         items = coll.find({'tags.name': {'$all': tags}})
         artists = [doc_to_artist(i) for i in items]
@@ -1208,7 +1214,7 @@ class Lastfm(callbacks.Plugin):
         out = "[artists]: %s" % ', '.join(["%s (%s)" %
             (a.name, ', '.join(["%s" % (t.name) for t in a.tags[:3]])) for a in artists[:5]])
         self.reply(irc, msg.args, out)
-    mt = wrap(multitagged, [commalist('something')])
+    mt = wrap(multitagged, ['text'])
 
 #******************************** expensive start
 #********************************
