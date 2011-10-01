@@ -645,7 +645,7 @@ def fetch(url_base, key, args):
     url = build_url(url_base, dict(key.items() + args.items()))
     print url
 
-    for retries in range(3, 0, -1):
+    for retries in range(2, -1, -1):
         try:
             opener = urllib2.build_opener()
             opener.addheaders = [('User-agent', 'Mozilla/5.0')]
