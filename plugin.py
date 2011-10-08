@@ -383,6 +383,20 @@ class Track(object):
                        duration = int(track_elem.find('duration').text or 0)
                      )
 
+    def getTopTags(self, autocorrect=1):
+        params = { 'method': 'track.getTopTags',
+                   'artist': self.artist.name,
+                   'track' : self.name,
+                   'autocorrect': autocorrect
+                 }
+        data = fetch(api_url_base, params, None)
+
+        return [ Tag( name = tag_elem.find('name').text,
+                      count = tag_elem.find('count').text,
+                      url = tag_elem.find('url')
+                    ) for tag_elem in data.findall('toptags/tag') ]
+
+
 # tracks is a user's recent tracks, tracks[0] should be now playing
 def now_playing_position(tracks):
     def make_time_tag(start_time, duration_ms):
@@ -1660,7 +1674,7 @@ class Lastfm(callbacks.Plugin):
                 track = account.getRecentTracks(limit=1)
                 if track[0].now_playing:
                     time_tag = now_playing_position(track)
-                    tags = Artist(track[0].artist.name).getTopTags()
+                    tags = track[0].getTopTags() or Artist(track[0].artist.name).getTopTags()
                     out = "[%s.playing]: %s - %s  (%s) %s" % ( n, track[0].artist.name, \
                                 track[0].name, ', '.join([t.name for t in tags[:3]]), time_tag )
                     self.reply(irc, msg.args, out)
@@ -1706,11 +1720,14 @@ class Lastfm(callbacks.Plugin):
 
                 if track and track[0] and track[0].now_playing:
                     time_tag = now_playing_position(track)
-                    artist = find_artist(track[0].artist.name)
-                    if artist and len(artist.tags):
-                        tag_str = "(%s)" % ', '.join([t.name for t in artist.tags[:3]])
-                    else:
-                        tag_str = ""
+                    try:
+                        tag_str = "(%s)" % ', '.join([t.name for t in track[0].getTopTags()[:3]])
+                    except Exception, e:
+                        artist = find_artist(track[0].artist.name)
+                        if artist and len(artist.tags):
+                            tag_str = "(%s)" % ', '.join([t.name for t in artist.tags[:3]])
+                        else:
+                            tag_str = ""
                     result = "%s - %s  %s %s" % (track[0].artist.name, track[0].name, tag_str, time_tag)
                 else:
                     result = "nothing"
