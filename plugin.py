@@ -1721,7 +1721,11 @@ class Lastfm(callbacks.Plugin):
                 if track and track[0] and track[0].now_playing:
                     time_tag = now_playing_position(track)
                     try:
-                        tag_str = "(%s)" % ', '.join([t.name for t in track[0].getTopTags()[:3]])
+                        tags = track[0].getTopTags()[:3]
+                        if len(tags):
+                            tag_str = "(%s)" % ', '.join([t.name for t in tags])
+                        else:
+                            raise Exception()
                     except Exception, e:
                         artist = find_artist(track[0].artist.name)
                         if artist and len(artist.tags):
