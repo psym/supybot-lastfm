@@ -13,7 +13,7 @@ import supybot.ircmsgs as ircmsgs
 import supybot.conf as conf
 
 from supybot.utils.web import htmlToText
-import time, datetime, getopt
+import datetime
 from time import time, mktime
 
 from collections import defaultdict
@@ -1711,7 +1711,6 @@ class Lastfm(callbacks.Plugin):
                 account = find_account(irc, msg, user)
                 #account = self.nick_to_user(user, msg.nick)
                 track = account.getRecentTracks(limit=1)
-                start_time = None
 
                 if use_nick:
                     out = "[%s.playing]:" % msg.nick
