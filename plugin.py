@@ -32,6 +32,7 @@ import pymongo
 from error import *
 
 from localsettings import *
+
 discogs_url_base = "http://discogs/com/"
 api_url_base = "http://localhost:6081/2.0/?api_key=%s" % api_key
 db = pymongo.Connection().anni.cache
@@ -1206,6 +1207,12 @@ class Lastfm(callbacks.Plugin):
         tags = [t for t in csv.reader([text], skipinitialspace=True)][0]
         print tags
 
+        # Look up top artists for each tag
+       # for t in tags:
+            #try:
+                #[find_artist(a.name) for a in Tag(name=t).getTopArtists()]
+            #except: pass
+
         coll = pymongo.Connection().anni.artist
         items = coll.find({'tags.name': {'$all': tags}})
         artists = [doc_to_artist(i) for i in items]
@@ -1299,13 +1306,13 @@ class Lastfm(callbacks.Plugin):
             if not other or other.name == caller.name: continue
 
             try:
-                results.append(taste_compare(caller, other, limit=10))
+                results.append([taste_compare(caller, other, limit=10), n])
             except Exception: continue
 
-        results = [r for r in sorted(results, key=lambda x: x.stats.score, reverse=True) if r.stats.score > .5]
+        results = [r for r in sorted(results, key=lambda x: x[0].stats.score, reverse=True) if r[0].stats.score > .5]
         if len(results):
             out = "[%s.akin]: %s" % (name or msg.nick, ', '.join(  \
-                        ["%s (%.2f%%)" % (r.right.name, r.stats.score*100) for r in results]))
+                        ["%s (%.2f%%)" % (r[1], r[0].stats.score*100) for r in results]))
         else:
             out = "[%s.akin]: i weep for your loneliness" % (name or msg.nick)
 
