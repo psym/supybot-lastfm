@@ -651,8 +651,7 @@ def check_xml(xml):
         print data
         code = int(data.find('error').get('code'))
         message = data.findtext('error')
-        if code in error_map.keys():
-            raise error_map[code](code = code, message = message)
+        raise LastfmError(code = code, message = message)
     return data
 
 def fetch(url_base, key, args):
