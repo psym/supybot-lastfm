@@ -1239,8 +1239,7 @@ class Lastfm(callbacks.Plugin):
                 #print usage
                 return
         try:
-            tags = ', '.join(['%s (%s)' % (t.name, t.count) for t in artist.tags])
-            tags = filter_tags(tags)
+            tags = ', '.join(['%s (%s)' % (t.name, t.count) for t in filter_tags(artist.tags)])
             out = '[%s.tags]: %s' % (artist.name, tags)
         except LastfmError, e:
             out = error_msg(msg, e)
@@ -1854,11 +1853,10 @@ class Lastfm(callbacks.Plugin):
             taste = taste_compare(left, right, limit=10)
             tags = defaultdict(lambda: 0)
             for a in taste.artists:
-                for t in a.tags[:5]:
+                for t in filter_tags(a.tags)[:5]:
                     if t.name not in ignore_tags:
                         tags[t.name] += 1
             tags = sorted(tags.iteritems(), key = operator.itemgetter(1), reverse=True)
-            tags = filter_tags(tags)
 
             out = "[%s.compare.%s]: %s (%.2f%%) %s feat. %s" % \
                     (left.name, right.name, \
