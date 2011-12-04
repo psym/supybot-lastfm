@@ -11,6 +11,7 @@ import supybot.ircutils as ircutils
 import supybot.callbacks as callbacks
 import supybot.ircmsgs as ircmsgs
 import supybot.conf as conf
+import supybot.ircdb as ircdb
 
 from supybot.utils.web import htmlToText
 import datetime
@@ -851,6 +852,30 @@ immigrant_song = ( "We come from the land of the ice and snow",
                    "On we sweep with threshing oar, Our only goal will be the western shore"
                    "Ah, ah" )
 
+def get_banned_tags():
+    db = pymongo.Connection().anni.banned_tags
+    return db.find()
+
+def ban_tag(tag_name):
+    db = pymongo.Connection().anni.banned_tags
+    spec = {'tag': tag_name.lower()}
+    doc = {'tag': tag_name.lower(), '$inc': {'count': 1},
+           'banned_on': datetime.datetime.utcnow(), 'banned_by': 'tdb'}
+    db.update(spec, spec, upsert=True, multi=False)
+
+def unban_tag(tag_name):
+    db = pymongo.Connection().anni.banned_tags
+    spec = {'tag': tag_name.lower()}
+    tag = db.find_one(spec, {"_id": 1})
+    if tag:
+        db.remove(tag)
+
+# tag_list is list of Tag
+def filter_tags(tag_list):
+    banned = [t['tag'] for t in get_banned_tags()]
+    return [t for t in tag_list if t.name.lower() not in banned]
+
+
 def find_from_nick(network, nick):
     acc = pymongo.Connection().anni.account
     #acc.ensure_index('nick')
@@ -1110,6 +1135,45 @@ class Lastfm(callbacks.Plugin):
         self.reply(irc, msg.args, out)
     recent = wrap(recent, [optional('something')])
 
+
+    def unbantag(self, irc, msg, args, tag):
+        """<tag>
+        unban <tag>
+        """
+        try:
+            if ircdb.checkCapability(msg.prefix, 'owner'):
+                unban_tag(tag)
+                self.reply(irc, msg.args, "'%s' removed from banned tags" % (tag))
+            else:
+                self.reply(irc, msg.args, "No permissions for you peon!")
+        except Exception, e:
+            self.reply(irc, msg.args, str(e))
+    unbantag = wrap(unbantag, ['text'])
+
+    def bantag(self, irc, msg, args, tag):
+        """<tag>
+        ban <tag> from appearing it tag lists
+        """
+        try:
+            if ircdb.checkCapability(msg.prefix, 'owner'):
+                ban_tag(tag)
+                self.reply(irc, msg.args, "'%s' added to banned tags" % (tag))
+            else:
+                self.reply(irc, msg.args, "No permissions for you peon!")
+        except Exception, e:
+            self.reply(irc, msg.args, str(e))
+    bantag = wrap(bantag, ['text'])
+
+    def bannedtags(self, irc, msg, args):
+        """
+        get all banned tags
+        """
+        tags = get_banned_tags()
+        out = "[banned.tags]: %s"% (', '.join( ["%s" % t['tag'] for t in tags] ))
+        self.reply(irc, msg.args, out)
+    bannedtags = wrap(bannedtags)
+
+
     def tagrank(self, irc, msg, args, tag):
         """<tag>
         popularity of tag
@@ -1176,6 +1240,7 @@ class Lastfm(callbacks.Plugin):
                 return
         try:
             tags = ', '.join(['%s (%s)' % (t.name, t.count) for t in artist.tags])
+            tags = filter_tags(tags)
             out = '[%s.tags]: %s' % (artist.name, tags)
         except LastfmError, e:
             out = error_msg(msg, e)
@@ -1244,7 +1309,7 @@ class Lastfm(callbacks.Plugin):
 
         try:
             tags = topTagsFromChart(group, period['start'], period['end'])
-
+            tags = filter_tags(tags)
             out = "[%s.tags %s]: %s" % (
                     group.name,
                     period['period'],
@@ -1412,7 +1477,7 @@ class Lastfm(callbacks.Plugin):
 
         try:
             tags = account.getTopTags(period['start'], period['end'])
-
+            tags = filter_tags(tags)
             out = "[%s.tags %s]: %s" % (account.name, period['period'], ', '.join( ["%s"  % (t.name) for t in tags] ) or 'none')
         except LastfmError, e:
             out = error_msg(msg, e)
@@ -1467,46 +1532,6 @@ class Lastfm(callbacks.Plugin):
 
         print name
         print type(name)
-
-#    def recfrom(self, irc, msg, args, period, user):
-#        perf = CachePerf(cache)
-#        from cluster import KMeansClustering
-#        period = period or overall_period()
-#        target = self.nick_to_user(msg.nick, None)
-#        other = self.nick_to_user(user, None)
-#
-#        target_artists = compileArtists( getWeeklyArtistChart(target, period['start'], period['end']), with_tags=True )
-#        other_artists = compileArtists( getWeeklyArtistChart(other, period['start'], period['end']), with_tags=True )
-#
-#        def artist_distance(a, b):
-#            a_w = 0
-#            b_w = 0
-#            common_tags = {}
-#            for t in a.tags:
-#                if t in b.tags:
-#                    common_tags[t.name] = t
-#            for t in b.tags:
-#                if t in a.tags:
-#                    common_tags[t.name] = t
-#
-#            #filter(lambda x: tag in x[1], tagged_artists)
-#            md = minkowski_distance(filter(lambda x: x.name in common_tags.keys(), a.tags),
-#                                    filter(lambda x: x.name in common_tags.keys(), b.tags),
-#                                    p =len(common_tags.keys()))
-#            return abs(a - b) * md
-#
-#        target_artists = sorted(target_artists, key=lambda x: x.stats.playcount, reverse=True)
-#        other_artists = sorted(other_artists, key=lambda x: x.stats.playcount, reverse=True)
-#        cl = KMeansClustering(zip(target_artists,other_artists), artist_distance)
-#        print cl.getclusters(5)
-#
-#        try:
-#            out = "** took %.2fs, %d calls (%d hit, %d miss)" % perf.results()
-#            print out
-#            #self.reply(irc, msg.args, out)
-#        except: pass
-#
-#    recfrom = wrap(recfrom, [optional('period'), 'user'])
 
 
     def myrecs_thread(self, irc, msg, args, period, name):
@@ -1681,6 +1706,7 @@ class Lastfm(callbacks.Plugin):
                 if track[0].now_playing:
                     time_tag = now_playing_position(track)
                     tags = track[0].getTopTags() or Artist(track[0].artist.name).getTopTags()
+                    tags = filter_tags(tags)
                     out = "[%s.playing]: %s - %s  (%s) %s" % ( n, track[0].artist.name, \
                                 track[0].name, ', '.join([t.name for t in tags[:3]]), time_tag )
                     self.reply(irc, msg.args, out)
@@ -1727,6 +1753,7 @@ class Lastfm(callbacks.Plugin):
                     time_tag = now_playing_position(track)
                     try:
                         tags = track[0].getTopTags()[:3]
+                        tags = filter_tags(tags)
                         if len(tags):
                             tag_str = "(%s)" % ', '.join([t.name for t in tags])
                         else:
@@ -1831,6 +1858,7 @@ class Lastfm(callbacks.Plugin):
                     if t.name not in ignore_tags:
                         tags[t.name] += 1
             tags = sorted(tags.iteritems(), key = operator.itemgetter(1), reverse=True)
+            tags = filter_tags(tags)
 
             out = "[%s.compare.%s]: %s (%.2f%%) %s feat. %s" % \
                     (left.name, right.name, \
