@@ -799,7 +799,8 @@ def topTagsFromChart(target, start=None, end=None):
     return [ Tag( name = tag,
                   stats = Stats( rank = rank,
                                  count = int(round(1000*weight/tag_weights_sum))
-                               )
+                               ),
+                  count = int(round(1000*weight/tag_weights_sum))
                 ) for (tag, weight, rank) in tag_weights ]
 
 
@@ -873,7 +874,7 @@ def unban_tag(tag_name):
 # tag_list is list of Tag
 def filter_tags(tag_list):
     banned = [t['tag'] for t in get_banned_tags()]
-    return [t for t in tag_list if t.name.lower() not in banned]
+    return [t for t in tag_list if t.name.lower() not in banned and t.count > 5]
 
 
 def find_from_nick(network, nick):
@@ -1230,10 +1231,12 @@ class Lastfm(callbacks.Plugin):
         print type(irc)
         if not artist:
             try:
-                track = account.getRecentTracks(limit=1)
+                caller = find_account(irc, msg)
+                track = caller.getRecentTracks(limit=1)
                 if track[0].now_playing:
                     artist = find_artist(track[0].artist.name)
-            except Exception:
+            except Exception, e:
+                print e
                 help = callbacks.getHelp(self.tags)
                 self.reply(irc, msg.args, help)
                 #print usage
@@ -1704,8 +1707,12 @@ class Lastfm(callbacks.Plugin):
                 track = account.getRecentTracks(limit=1)
                 if track[0].now_playing:
                     time_tag = now_playing_position(track)
-                    tags = track[0].getTopTags() or Artist(track[0].artist.name).getTopTags()
+                    track_tags = track[0].getTopTags()
+                    artist_tags = Artist(track[0].artist.name).getTopTags()
+                    tags = [t for t in track_tags if t in artist_tags]
+                    #tags = track[0].getTopTags() or Artist(track[0].artist.name).getTopTags()
                     tags = filter_tags(tags)
+                    tags = tags or filter_tags(artist_tags)
                     out = "[%s.playing]: %s - %s  (%s) %s" % ( n, track[0].artist.name, \
                                 track[0].name, ', '.join([t.name for t in tags[:3]]), time_tag )
                     self.reply(irc, msg.args, out)
@@ -1775,7 +1782,7 @@ class Lastfm(callbacks.Plugin):
 
     def account(self, irc, msg, args, name):
         """<account>
-        Associates Last.FM <account> with your nick.
+        Associates Last.FM <account> with your host.
         """
         account_coll = pymongo.Connection().anni.account
 
