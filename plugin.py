@@ -195,6 +195,19 @@ class Tag(object):
                          stats = Stats( rank = artist_elem.attrib['rank'] )
                     ) for artist_elem in data.findall('topartists/artist') ]
 
+    def getInfo(self):
+        params = { 'method': 'tag.getInfo', 'tag': self.name }
+        data = fetch(api_url_base, params, None)
+        wiki = data.find('tag/wiki')
+
+        summary = wiki.find('summary').text or "none"
+        content = wiki.find('content').text or "none"
+        summary = htmlToText(summary.encode('ascii', 'ignore')).replace('\n', ' ')
+        content = htmlToText(content.encode('ascii', 'ignore')).replace('\n', ' ')
+        return {'summary': unicode(summary, 'utf-8', 'ignore'),
+                'content': unicode(content, 'utf-8', 'ignore')}
+
+
     @staticmethod
     def getTopTags():
         params = { 'method': 'tag.getTopTags'}
@@ -1209,17 +1222,11 @@ class Lastfm(callbacks.Plugin):
             self.reply(irc, msg.args, "no tags found")
             return
 
-        query = "http://www.last.fm/tag/%s/wiki" % quote_plus(tag.name)
-        print query
-        url = urllib2.urlopen(query)
-
         try:
-            soup = BeautifulSoup.BeautifulSoup(url)
-            result = unicode( soup.find('div', attrs={"id" : 'wiki'}) )
-        except Exception:
-            result = "no data"
-
-        out = "[%s.wiki]: %s" % (tag.name, htmlToText(result).replace('\n', ' '))
+            wiki = tag.getInfo()
+            out = "[tag.wiki]: %s" % (wiki['content'])
+        except:
+            out = "no data"
         self.reply(irc, msg.args, out)
     tag = wrap(tag, ['text'])
 
