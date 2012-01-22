@@ -9,6 +9,7 @@ import operator
 import threading
 #import supybot.utils as utils
 from supybot.commands import getText, addConverter, wrap, optional, commalist
+from supybot.commands import context
 #import supybot.plugins as plugins
 #import supybot.ircutils as ircutils
 import supybot.callbacks as callbacks
@@ -55,6 +56,27 @@ class mores:
 
     def __exit__(self, type, value, traceback):
         conf.supybot.reply.mores.length.setValue(self.old_mores)
+
+
+# or_now_playing means: Look of this or try obtaining from
+# caller's now playing.  Only works for artists atm
+class or_now_playing(context):
+    def __init__(self, spec):
+        self.__parent = super(or_now_playing, self)
+        self.__parent.__init__(spec)
+
+    def __call__(self, irc, msg, args, state):
+        try:
+            self.__parent.__call__(irc, msg, args, state)
+        except IndexError:
+            if self.spec == 'artist':
+                caller = find_account(irc, msg)
+                track = caller.getRecentTracks(limit=1)[0]
+                if not track.now_playing:
+                    raise
+                state.args.append(track.artist)
+            else:
+                raise
 
 
 def overall_period():
@@ -270,12 +292,30 @@ class Artist(object):
         self.name = name
         self.mbid = mbid
         self.url = url
-        self.stats = stats or Stats()
-        self.tags = tags
-        self.bio = bio
+        self._stats = stats
+        self._tags = tags
+        self._bio = bio
 
     def __repr__(self):
         return "<Artist: %s>" % self.name
+
+    @property
+    def tags(self):
+        if not self._tags:
+            self._tags = self.getTopTags()
+        return self._tags
+
+    @property
+    def stats(self):
+        if not self._stats:
+            self._stats = self.getInfo().stats
+        return self._stats
+
+    @property
+    def bio(self):
+        if not self._bio:
+            self._bio = self.getBio().bio
+        return self._bio
 
     def getSimilar(self, limit=None):
         params = {'method': 'artist.getSimilar',
@@ -885,8 +925,7 @@ class CachePerf(object):
     def results(self):
         if not self.valid:
             self.end()
-        # (time took, calls took, hits, misses)
-        return (self.end_time - self.start_time, 0, 0, 0)
+        return defaultdict(int, {'time': self.end_time - self.start_time})
 
 
 immigrant_song = ("We come from the land of the ice and snow",
@@ -1147,8 +1186,8 @@ class Lastfm(callbacks.Plugin):
     mongo = wrap(mongo, [optional('user')])
 
     def artist(self, irc, msg, args, artist):
-        """<artist>
-        artist.getInfo()
+        """[artist]
+        Info of artist or your currently playing artist
         """
         try:
             out = "[%s.artist]: %d listeners. tagged: %s" % (
@@ -1158,11 +1197,11 @@ class Lastfm(callbacks.Plugin):
         except LastfmError, e:
             out = error_msg(msg, e)
         self.reply(irc, msg.args, out)
-    artist = wrap(artist, ['artist'])
+    artist = wrap(artist, [or_now_playing('artist')])
 
     def albums(self, irc, msg, args, artist):
-        """<artist>
-        Returns albums for <artist>
+        """[artist]
+        Returns albums for artist or your currently playing artist
         """
         try:
             albums = artist.getTopAlbums()
@@ -1172,11 +1211,11 @@ class Lastfm(callbacks.Plugin):
         except LastfmError, e:
             out = error_msg(msg, e)
         self.reply(irc, msg.args, out)
-    albums = wrap(albums, ['artist'])
+    albums = wrap(albums, [or_now_playing('artist')])
 
     def similar(self, irc, msg, args, artist):
-        """<artist>
-         Returns artists similar to <artist>
+        """[artist]
+        Returns artists similar to artist or your currently playing artist
         """
         try:
             similar = artist.getSimilar(limit=8)
@@ -1186,7 +1225,7 @@ class Lastfm(callbacks.Plugin):
         except LastfmError, e:
             out = error_msg(msg, e)
         self.reply(irc, msg.args, out)
-    similar = wrap(similar, ['artist'])
+    similar = wrap(similar, [or_now_playing('artist')])
 
     def recent(self, irc, msg, args, name):
         """[user]
@@ -1279,9 +1318,6 @@ class Lastfm(callbacks.Plugin):
 
         try:
             wiki = tag.getInfo()
-            print wiki['summary']
-            print
-            print wiki['content']
             out = "[tag.wiki]: %s" % (wiki['content'])
         except:
             out = "no data"
@@ -1290,21 +1326,8 @@ class Lastfm(callbacks.Plugin):
 
     def tags(self, irc, msg, args, artist):
         """[artist]
-        Returns top tags for artist or your currently playing track
+        Returns top tags for artist or your currently playing artist
         """
-        print type(irc)
-        if not artist:
-            try:
-                caller = find_account(irc, msg)
-                track = caller.getRecentTracks(limit=1)
-                if track[0].now_playing:
-                    artist = find_artist(track[0].artist.name)
-            except Exception, e:
-                print e
-                help = callbacks.getHelp(self.tags)
-                self.reply(irc, msg.args, help)
-                #print usage
-                return
         try:
             tags = ', '.join(['%s (%s)' % (t.name, t.count) for t in filter_tags(artist.tags)])
             out = '[%s.tags]: %s' % (artist.name, tags)
@@ -1312,7 +1335,7 @@ class Lastfm(callbacks.Plugin):
             out = error_msg(msg, e)
         with mores(250):
             self.reply(irc, msg.args, out)
-    tags = wrap(tags, [optional('artist')])
+    tags = wrap(tags, [or_now_playing('artist')])
 
     def tagged(self, irc, msg, args, tag):
         """<tag>
@@ -1398,12 +1421,12 @@ class Lastfm(callbacks.Plugin):
         try:
             charts = getWeeklyChartList(group)
             (start_chart, end_chart) = chart_range(period['start'], period['end'], charts)
-            out = ' '.join(("** took %.2fs, %d calls (%d hit, %d miss)" % perf.results(),
-                            "-- wanted %s to %s, using %s to %s" % (period['start'].strftime("%m-%d-%y"), \
-                                                                    period['end'].strftime("%m-%d-%y"), \
-                                                                    start_chart.start.strftime("%m-%d-%y"), \
-                                                                    end_chart.end.strftime("%m-%d-%y"))))
-            print out
+            out = "gtags: took %.2fs -- wanted %s to %s, using %s to %s"
+            log.info(out % (perf.results()['time'],
+                            period['start'].strftime("%m-%d-%y"),
+                            period['end'].strftime("%m-%d-%y"),
+                            start_chart.start.strftime("%m-%d-%y"),
+                            end_chart.end.strftime("%m-%d-%y")))
         except:
             pass
 
@@ -1424,12 +1447,12 @@ class Lastfm(callbacks.Plugin):
         try:
             charts = getWeeklyChartList(group)
             (start_chart, end_chart) = chart_range(period['start'], period['end'], charts)
-            out = ' '.join(("** took %.2fs, %d calls (%d hit, %d miss)" % perf.results(),
-                            "-- wanted %s to %s, using %s to %s" % (period['start'].strftime("%m-%d-%y"), \
-                                                                    period['end'].strftime("%m-%d-%y"), \
-                                                                    start_chart.start.strftime("%m-%d-%y"), \
-                                                                    end_chart.end.strftime("%m-%d-%y"))))
-            print out
+            out = "gartists: took %.2fs -- wanted %s to %s, using %s to %s"
+            log.info(out % (perf.results()['time'],
+                            period['start'].strftime("%m-%d-%y"),
+                            period['end'].strftime("%m-%d-%y"),
+                            start_chart.start.strftime("%m-%d-%y"),
+                            end_chart.end.strftime("%m-%d-%y")))
         except:
             pass
 
@@ -1469,7 +1492,6 @@ class Lastfm(callbacks.Plugin):
         nicks = list(irc.state.channels[msg.args[0]].users)
         have_heard = []
         for n in nicks:
-            #account = self.nick_to_user(n)
             account = find_account(irc, msg, n)
             if not account:
                 continue
@@ -1495,7 +1517,6 @@ class Lastfm(callbacks.Plugin):
     def utagged_thread(self, irc, msg, args, period, name, tag):
         perf = CachePerf()
         period = period or overall_period()
-        #account = self.nick_to_user(user, msg.nick)
         account = find_account(irc, msg, name)
 
         try:
@@ -1510,7 +1531,6 @@ class Lastfm(callbacks.Plugin):
                         tagged_artists.append((a, tags, w))
                         break
 
-            #filter(lambda x: tag in x[1], tagged_artists)
             ta = sorted(tagged_artists, key=lambda x: x[2], reverse=True)
 
             out = "[%s.artists %s]:" % (account.name, period['period'])
@@ -1527,12 +1547,12 @@ class Lastfm(callbacks.Plugin):
         try:
             charts = getWeeklyChartList(account)
             (start_chart, end_chart) = chart_range(period['start'], period['end'], charts)
-            out = ' '.join(("** took %.2fs, %d calls (%d hit, %d miss)" % perf.results(),
-                            "-- wanted %s to %s, using %s to %s" % (period['start'].strftime("%m-%d-%y"), \
-                                                                    period['end'].strftime("%m-%d-%y"), \
-                                                                    start_chart.start.strftime("%m-%d-%y"), \
-                                                                    end_chart.end.strftime("%m-%d-%y"))))
-            print out
+            out = "heardtag: took %.2fs -- wanted %s to %s, using %s to %s"
+            log.info(out % (perf.results()['time'],
+                            period['start'].strftime("%m-%d-%y"),
+                            period['end'].strftime("%m-%d-%y"),
+                            start_chart.start.strftime("%m-%d-%y"),
+                            end_chart.end.strftime("%m-%d-%y")))
         except:
             pass
 
@@ -1540,7 +1560,6 @@ class Lastfm(callbacks.Plugin):
         perf = CachePerf()
         period = period or overall_period()
         account = find_account(irc, msg, name)
-        #account = self.nick_to_user(user, msg.nick)
 
         try:
             tags = account.getTopTags(period['start'], period['end'])
@@ -1555,24 +1574,23 @@ class Lastfm(callbacks.Plugin):
         try:
             charts = getWeeklyChartList(account)
             (start_chart, end_chart) = chart_range(period['start'], period['end'], charts)
-            out = ' '.join(("** took %.2fs, %d calls (%d hit, %d miss)" % perf.results(),
-                            "-- wanted %s to %s, using %s to %s" % (period['start'].strftime("%m-%d-%y"), \
-                                                                    period['end'].strftime("%m-%d-%y"), \
-                                                                    start_chart.start.strftime("%m-%d-%y"), \
-                                                                    end_chart.end.strftime("%m-%d-%y"))))
-            print out
+            out = "mytags: took %.2fs -- wanted %s to %s, using %s to %s"
+            log.info(out % (perf.results()['time'],
+                            period['start'].strftime("%m-%d-%y"),
+                            period['end'].strftime("%m-%d-%y"),
+                            start_chart.start.strftime("%m-%d-%y"),
+                            end_chart.end.strftime("%m-%d-%y")))
         except:
             pass
 
     def myartists_thread(self, irc, msg, args, period, name):
         perf = CachePerf()
         period = period or overall_period()
-
+        fast_periods = ('overall', '7day', '3month', '6month', '12month')
         account = find_account(irc, msg, name)
-        #account = self.nick_to_user(user, msg.nick)
 
         try:
-            if period['period'] in ('overall', '7day', '3month', '6month', '12month'):
+            if period['period'] in fast_periods:
                 artists = account.getTopArtists(period['period'])
             else:
                 charts = getWeeklyArtistChart(account, period['start'], period['end'])
@@ -1586,28 +1604,24 @@ class Lastfm(callbacks.Plugin):
         self.reply(irc, msg.args, out)
 
         try:
-            out = "** took %.2fs, %d calls (%d hit, %d miss)" % perf.results()
-
-            if period['period'] not in ('overall', '7day', '3month', '6month', '12month'):
+            out = "myartists: took %.2fs" % perf.results()['time']
+            if period['period'] not in fast_periods:
                 charts = getWeeklyChartList(account)
                 (start_chart, end_chart) = chart_range(period['start'], period['end'], charts)
-                out += "-- wanted %s to %s, using %s to %s" % (period['start'].strftime("%m-%d-%y"), \
-                                                               period['end'].strftime("%m-%d-%y"), \
-                                                               start_chart.start.strftime("%m-%d-%y"),
-                                                               end_chart.end.strftime("%m-%d-%y"))
-            print out
+                out += " -- wanted %s to %s, using %s to %s" % \
+                            (period['start'].strftime("%m-%d-%y"),
+                             period['end'].strftime("%m-%d-%y"),
+                             start_chart.start.strftime("%m-%d-%y"),
+                             end_chart.end.strftime("%m-%d-%y"))
+            log.info(out)
         except:
             pass
-
-        print name
-        print type(name)
 
     def myrecs_thread(self, irc, msg, args, period, name):
         perf = CachePerf()
         period = period or overall_period()
 
         account = find_account(irc, msg, name)
-        #account = self.nick_to_user(user, msg.nick)
 
         try:
             neighbours = account.getNeighbours(limit=10)
@@ -1652,19 +1666,17 @@ class Lastfm(callbacks.Plugin):
         try:
             charts = getWeeklyChartList(account)
             (start_chart, end_chart) = chart_range(period['start'], period['end'], charts)
-            out = ' '.join(("** took %.2fs, %d calls (%d hit, %d miss)" % perf.results(),
-                            "-- wanted %s to %s, using %s to %s" % (period['start'].strftime("%m-%d-%y"), \
-                                                                    period['end'].strftime("%m-%d-%y"), \
-                                                                    start_chart.start.strftime("%m-%d-%y"), \
-                                                                    end_chart.end.strftime("%m-%d-%y"))))
-            print out
+            out = "myrecs: took %.2fs -- wanted %s to %s, using %s to %s"
+            log.info(out % (perf.results()['time'],
+                            period['start'].strftime("%m-%d-%y"),
+                            period['end'].strftime("%m-%d-%y"),
+                            start_chart.start.strftime("%m-%d-%y"),
+                            end_chart.end.strftime("%m-%d-%y")))
         except:
             pass
 
     def eclectic_thread(self, irc, msg, args, name, num_top=20, num_sim=5):
-        #account = name
         account = find_account(irc, msg, name)
-        #account = self.nick_to_user(user, msg.nick)
         try:
             top20 = account.getTopArtists()[:num_top]
             artists = {}
@@ -1755,14 +1767,16 @@ class Lastfm(callbacks.Plugin):
         """
         irc.reply("'%s' may take a while" % command_name(msg), private=True, notice=True)
         threading.Thread(target=self.heard_artist_thread, args=(irc, msg, args, artist)).start()
-    heardartist = wrap(heardartist, ['artist'])
+    heardartist = wrap(heardartist, [optional('artist')])
 
     def whatsplaying_thread(self, irc, msg, args):
         """Returns what is playing"""
+        perf = CachePerf()
         channel_state = irc.state.channels[msg.args[0]]
         #for i in channel_state.users:
         #    log.info("!wp %s: %s -> %s" % (msg.args[0], i, irc.state.nickToHostmask(i)))
         nicks = list(channel_state.users)
+        hits = 0
         for n in nicks:
             account = find_account(irc, msg, n)
             if not account:
@@ -1780,13 +1794,14 @@ class Lastfm(callbacks.Plugin):
                     out = "[%s.playing]: %s - %s  %s %s" % (n, track[0].artist.name, \
                                 track[0].name, tag_str, time_tag)
                     self.reply(irc, msg.args, out)
-            except IndexError:
+                    hits += 1
+            except IndexError:      # Nothing playing
                 continue
-            except Exception, e:
-                log.exception("!wp %s" % e)
-                log.info("n: %s  account: %s" % (n, account))
-                log.info("nicks: %s" % nicks)
+            except Exception:
                 continue
+
+        out = "whatsplaying %s: took %.2fs -- %s hits of %s users"
+        log.info(out % (msg.args[0], perf.results()['time'], hits, len(nicks)))
 
     def whatsplaying(self, irc, msg, args):
         """Returns what is playing"""
@@ -1871,7 +1886,7 @@ class Lastfm(callbacks.Plugin):
             nicks = account_coll.find({'network': irc.network, 'nick': n}, {'_id': 0})
         else:
             nicks = account_coll.find({'network': irc.network, 'host': h}, {'_id': 0}) or \
-                    account_coll.find({'network': irc.netwok, 'nick': n}, {'_id': 0})
+                    account_coll.find({'network': irc.network, 'nick': n}, {'_id': 0})
 
         nicks = []
         for k, v in self.users.items():
@@ -1889,16 +1904,15 @@ class Lastfm(callbacks.Plugin):
     user = wrap(user, [optional('something')])
 
     def bio(self, irc, msg, args, artist):
-        """<artist>
-        Return biography for <artist>
+        """[artist]
+        Return biography for artist or your currently playing artist
         """
         try:
-            a = artist.getBio()
-            out = "[%s.bio]: %s" % (a.name, a.bio)
+            out = "[%s.bio]: %s" % (artist.name, artist.bio)
         except LastfmError, e:
             out = error_msg(msg, e)
         self.reply(irc, msg.args, out)
-    bio = wrap(bio, ['artist'])
+    bio = wrap(bio, [or_now_playing('artist')])
 
     def compare(self, irc, msg, args, user1, user2):
         """<user1> [user2]
@@ -1930,13 +1944,13 @@ class Lastfm(callbacks.Plugin):
     compare = wrap(compare, ['something', optional('something')])
 
     def heard(self, irc, msg, args, account, artist):
-        """<user> <artist>
-        Returns artists from list that user has listened to
+        """<user> [artist]
+        Has user listened to artist or your currently playing artist
         """
         try:
             taste = taste_compare(account, artist)
             if len(taste.artists) == 0:
-                found = "none of that"
+                found = "none of %s" % artist.name
             elif len(taste.artists) > 1:
                 found = ', '.join([t.name for t in taste.artists])
             else:
@@ -1945,7 +1959,7 @@ class Lastfm(callbacks.Plugin):
         except LastfmError, e:
             out = error_msg(msg, e)
         self.reply(irc, msg.args, out)
-    heard = wrap(heard, ['user', 'artist'])
+    heard = wrap(heard, ['user', or_now_playing('artist')])
 
     def neighbours(self, irc, msg, args, user):
         """[user]
