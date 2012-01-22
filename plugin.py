@@ -1767,7 +1767,7 @@ class Lastfm(callbacks.Plugin):
         """
         irc.reply("'%s' may take a while" % command_name(msg), private=True, notice=True)
         threading.Thread(target=self.heard_artist_thread, args=(irc, msg, args, artist)).start()
-    heardartist = wrap(heardartist, [optional('artist')])
+    heardartist = wrap(heardartist, [or_now_playing('artist')])
 
     def whatsplaying_thread(self, irc, msg, args):
         """Returns what is playing"""
