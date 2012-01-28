@@ -295,27 +295,50 @@ class Artist(object):
         self._stats = stats
         self._tags = tags
         self._bio = bio
+        self.missing_stats = False
+        self.missing_tags = True
+        self.missing_bio = True
 
     def __repr__(self):
         return "<Artist: %s>" % self.name
 
     @property
     def tags(self):
-        if not self._tags:
+        if not self._tags and self.missing_tags:
             self._tags = self.getTopTags()
+            self.missing_tags = False
         return self._tags
+
+    @tags.setter
+    def tags(self, value):
+        self._tags = value
+        self.missing_tags = False
 
     @property
     def stats(self):
-        if not self._stats:
-            self._stats = self.getInfo().stats
+        if not self._stats and self.missing_stats:
+            a = self.getInfo()
+            if not a.missing_stats:
+                self._stats = a.stats
+            self.missing_stats = False
         return self._stats
+#
+#    @stats.setter
+#    def stats(self, value):
+#        self._stats = value
+#        self.missing_stats = False
 
     @property
     def bio(self):
         if not self._bio:
             self._bio = self.getBio().bio
+            self.missing_bio = False
         return self._bio
+
+    @bio.setter
+    def bio(self, value):
+        self._bio = value
+        self.missing_bio = False
 
     def getSimilar(self, limit=None):
         params = {'method': 'artist.getSimilar',
@@ -360,9 +383,6 @@ class Artist(object):
                       stats=Stats(listeners=artist_elem.find('stats/listeners').text,
                                   playcount=artist_elem.find('stats/playcount').text,
                                   userplaycount=safe_find_text(artist_elem, 'stats/userplaycount')),
-                      tags=[Tag(name=tag_elem.find('name').text,
-                                url=tag_elem.find('url').text)
-                            for tag_elem in artist_elem.findall('tags/tag')],
                       bio="")
 
     def getBio(self, username=None, lang=None, autocorrect=1):
@@ -975,7 +995,7 @@ def find_from_nick(network, nick):
 
 
 def db_key_clean(nick):
-    return nick.replace('.', '_'.lower())
+    return nick.replace('.', '_').lower()
 
 
 def find_account(irc, msg, user=None):
@@ -1091,12 +1111,8 @@ def doc_to_artist(doc):
 
 
 def artist_to_doc(artist):
-    if artist.stats:
-        stats = {'listeners': artist.stats.listeners, 'playcount': artist.stats.playcount}
-    else:
-        stats = None
-
-    if artist.tags:
+    stats = {'listeners': artist.stats.listeners, 'playcount': artist.stats.playcount}
+    if not artist.missing_tags:
         tags = [{'name': t.name, 'count': t.count} for t in artist.tags]
     else:
         tags = None
@@ -1119,8 +1135,8 @@ def find_artist(name, expired_ok=False):
     if item:
         return doc_to_artist(item)
 
+    print "find_artist new %s" % name
     item = Artist(name).getInfo()
-    item.tags = item.getTopTags()
     artist_doc = artist_to_doc(item)
     artist_doc['key'] = name.lower()
     artist_doc['creation_date'] = datetime.utcnow()
@@ -1189,6 +1205,7 @@ class Lastfm(callbacks.Plugin):
         """[artist]
         Info of artist or your currently playing artist
         """
+        artist = artist.getInfo()
         try:
             out = "[%s.artist]: %d listeners. tagged: %s" % (
                     artist.name,
