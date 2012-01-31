@@ -317,20 +317,20 @@ class Artist(object):
     @property
     def stats(self):
         if not self._stats and self.missing_stats:
-            a = self.getInfo()
             if not a.missing_stats:
+                a = self.getInfo()
                 self._stats = a.stats
             self.missing_stats = False
         return self._stats
-#
-#    @stats.setter
-#    def stats(self, value):
-#        self._stats = value
-#        self.missing_stats = False
+
+    @stats.setter
+    def stats(self, value):
+        self._stats = value
+        self.missing_stats = False
 
     @property
     def bio(self):
-        if not self._bio:
+        if not self._bio and self.missing_bio:
             self._bio = self.getBio().bio
             self.missing_bio = False
         return self._bio
@@ -1345,6 +1345,7 @@ class Lastfm(callbacks.Plugin):
         """[artist]
         Returns top tags for artist or your currently playing artist
         """
+        perf = CachePerf()
         try:
             tags = ', '.join(['%s (%s)' % (t.name, t.count) for t in filter_tags(artist.tags)])
             out = '[%s.tags]: %s' % (artist.name, tags)
@@ -1352,6 +1353,8 @@ class Lastfm(callbacks.Plugin):
             out = error_msg(msg, e)
         with mores(250):
             self.reply(irc, msg.args, out)
+        out = "tags: took %.6fs"
+        log.info(out % (perf.results()['time']))
     tags = wrap(tags, [or_now_playing('artist')])
 
     def tagged(self, irc, msg, args, tag):
