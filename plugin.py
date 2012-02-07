@@ -295,9 +295,18 @@ class Artist(object):
         self._stats = stats
         self._tags = tags
         self._bio = bio
-        self.missing_stats = False
-        self.missing_tags = True
-        self.missing_bio = True
+        if stats:
+            self.missing_stats = False
+        else:
+            self.missing_stats = True
+        if tags:
+            self.missing_tags = False
+        else:
+            self.missing_tags = True
+        if bio:
+            self.missing_bio = False
+        else:
+            self.missing_bio = True
 
     def __repr__(self):
         return "<Artist: %s>" % self.name
@@ -317,9 +326,10 @@ class Artist(object):
     @property
     def stats(self):
         if not self._stats and self.missing_stats:
-            if not a.missing_stats:
-                a = self.getInfo()
-                self._stats = a.stats
+            print "fetching stats"
+            a = self.getInfo()
+            a.missing_stats = False
+            self._stats = a.stats
             self.missing_stats = False
         return self._stats
 
@@ -331,7 +341,9 @@ class Artist(object):
     @property
     def bio(self):
         if not self._bio and self.missing_bio:
-            self._bio = self.getBio().bio
+            b = self.getBio()
+            b.missing_bio = False
+            self._bio = b.bio
             self.missing_bio = False
         return self._bio
 
@@ -377,13 +389,15 @@ class Artist(object):
             except AttributeError:
                 return None
 
-        return Artist(artist_elem.find('name').text,
+        a = Artist(artist_elem.find('name').text,
                       mbid=artist_elem.find('mbid').text,
                       url=artist_elem.find('url').text,
                       stats=Stats(listeners=artist_elem.find('stats/listeners').text,
                                   playcount=artist_elem.find('stats/playcount').text,
                                   userplaycount=safe_find_text(artist_elem, 'stats/userplaycount')),
                       bio="")
+        a.missing_stats = False
+        return a
 
     def getBio(self, username=None, lang=None, autocorrect=1):
         params = {'method': 'artist.getInfo',
@@ -400,7 +414,9 @@ class Artist(object):
         bio = htmlToText(bio).replace('\n', ' ')
         bio = unicode(bio, 'utf-8', 'ignore')
 
-        return Artist(artist_elem.find('name').text, bio=bio)
+        a = Artist(artist_elem.find('name').text, bio=bio)
+        a.missing_bio = False
+        return a
 
     def getTopAlbums(self):
         params = {'method': 'artist.getTopAlbums', 'artist': self.name}
