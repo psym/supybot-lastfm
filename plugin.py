@@ -1013,6 +1013,10 @@ def find_from_nick(network, nick):
 def db_key_clean(nick):
     return nick.replace('.', '_').lower()
 
+def hostmask_clean(mask):
+    return reduce(lambda acc, x: acc.replace(x, '_'),
+                  ['!','@','.','~'],
+                  mask).lower().split('_',1)[1]
 
 def find_account(irc, msg, user=None):
     account_coll = pymongo.Connection().anni.account
@@ -1033,28 +1037,22 @@ def find_account(irc, msg, user=None):
 
     if user and user != msg.nick:
         try:
-            host = irc.state.nickToHostmask(user).replace('.', '_').lower().split('@', 1)[1]
+            print "find_account user: %s" % user
+            #host = irc.state.nickToHostmask(user).replace('.', '_').lower().split('@', 1)[1]
+            host = hostmask_clean(irc.state.nickToHostmask(user))
         except:
             #user isnt an irc user we've seen, may not be a irc user at all
             host = None
         caller_self = False
     else:
-        host = msg.host.replace('.', '_').lower()
+        try:
+            host = hostmask_clean(irc.state.nickToHostmask(user))
+        except:
+            host = None
+
+        #host = msg.host.replace('.', '_').lower()
         user = msg.nick
         caller_self = True
-
-    #look up given user (if any)
-    #if user and user != msg.nick:
-    #    host = irc.state.nickToHostmask(user).replace('.','_').lower()
-    #    item = find_from_nick(irc.network, user)
-    #    if item:
-    #        return User(item['account'])
-
-    #    item = try_legacy(user)
-    #    if not item:
-    #        print "legacy fallback using %s" % user
-    #        return User(user)
-    #    return User(item)
 
     #look up caller host
     ##host = msg.host.replace('.','_').lower()
@@ -1936,7 +1934,7 @@ class Lastfm(callbacks.Plugin):
         except LastfmError, e:
             out = error_msg(msg, e)
         self.reply(irc, msg.args, out)
-    profile = wrap(user, [optional('user')])
+    profile = wrap(user, [optional('something')])
     user = wrap(user, [optional('something')])
 
     def bio(self, irc, msg, args, artist):
