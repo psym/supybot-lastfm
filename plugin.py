@@ -69,7 +69,7 @@ class or_now_playing(context):
         try:
             self.__parent.__call__(irc, msg, args, state)
         except IndexError:
-            if self.spec == 'artist':
+            if self.spec == 'lfm_artist':
                 caller = find_account(irc, msg)
                 track = caller.getRecentTracks(limit=1)[0]
                 if not track.now_playing:
@@ -80,7 +80,7 @@ class or_now_playing(context):
 
 
 def overall_period():
-    return {'period': 'overall',
+    return {'lfm_period': 'overall',
             'start': datetime(2002, 1, 1),
             'end': datetime.now()}
 
@@ -90,27 +90,27 @@ def overall_period():
 def getPeriod(irc, msg, args, state):
     now = datetime.now()
     if args[0] == '-3':
-        state.args.append({'period': '3month',
+        state.args.append({'lfm_period': '3month',
                            'start': now - timedelta(90),
                            'end': now})
         args.pop(0)
     elif args[0] == '-6':
-        state.args.append({'period': '6month',
+        state.args.append({'lfm_period': '6month',
                            'start': now - timedelta(180),
                            'end': now})
         args.pop(0)
     elif args[0] == '-12':
-        state.args.append({'period': '12month',
+        state.args.append({'lfm_period': '12month',
                            'start': now - timedelta(365),
                            'end': now})
         args.pop(0)
     elif args[0] == '-w':
-        state.args.append({'period': '7day',
+        state.args.append({'lfm_period': '7day',
                            'start': now - timedelta(7),
                            'end': now})
         args.pop(0)
     elif args[0] == '-m':
-        state.args.append({'period': '1month',
+        state.args.append({'lfm_period': '1month',
                            'start': now - timedelta(30),
                            'end': now})
         args.pop(0)
@@ -120,22 +120,22 @@ def getPeriod(irc, msg, args, state):
     elif args[0] == '-d':
         try:
             days = int(args[1])
-            state.args.append({'period': '%d days' % days,
+            state.args.append({'lfm_period': '%d days' % days,
                                'start': now - timedelta(days),
                                'end': now})
             del args[:2]
         except:
-            state.errorInvalid('period', ' '.join(args[:2]))
+            state.errorInvalid('lfm_period', ' '.join(args[:2]))
     else:
         try:
             days = int(re.match(r'-d(\d+)', args[0]).group(1))
-            state.args.append({'period': '%d days' % days,
+            state.args.append({'lfm_period': '%d days' % days,
                                'start': now - timedelta(days),
                                'end': now})
             args.pop(0)
         except:     # no matches
             state.args.append(overall_period())
-addConverter('period', getPeriod)
+addConverter('lfm_period', getPeriod)
 
 
 def artistConverter(irc, msg, args, state):
@@ -144,32 +144,32 @@ def artistConverter(irc, msg, args, state):
         state.args[-1] = find_artist(state.args[-1])
     except Exception, e:
         state.error('%s' % e)
-addConverter('artist', artistConverter)
+addConverter('lfm_artist', artistConverter)
 
 
 def groupConverter(irc, msg, args, state):
     getText(irc, msg, args, state)
     state.args[-1] = Group(state.args[-1])
-addConverter('group', groupConverter)
+addConverter('lfm_group', groupConverter)
 
 
 def tagConverter(irc, msg, args, state):
     from supybot.commands import getText
     getText(irc, msg, args, state)
     state.args[-1] = Tag(state.args[-1])
-addConverter('tag', tagConverter)
+addConverter('lfm_tag', tagConverter)
 
 
 def userConverter(irc, msg, args, state):
     if '#' in args[0]:
-        state.errorInvalid('user', args[0])
+        state.errorInvalid('lfm_user', args[0])
     try:
         state.args.append(find_account(irc, msg, args[0]))
         args.pop(0)
     except Exception, e:
         state.error('%s' % e)
     #state.args.append(args.pop(0))
-addConverter('user', userConverter)
+addConverter('lfm_user', userConverter)
 
 
 def normalReply(irc, mod, msg, to=None):
@@ -1213,7 +1213,7 @@ class Lastfm(callbacks.Plugin):
     def mongo(self, irc, msg, args, user):
         print find_account(irc, msg, user)
         #self.reply(irc, msg.args, out)
-    mongo = wrap(mongo, [optional('user')])
+    mongo = wrap(mongo, [optional('lfm_user')])
 
     def artist(self, irc, msg, args, artist):
         """[artist]
@@ -1228,7 +1228,7 @@ class Lastfm(callbacks.Plugin):
         except LastfmError, e:
             out = error_msg(msg, e)
         self.reply(irc, msg.args, out)
-    artist = wrap(artist, [or_now_playing('artist')])
+    artist = wrap(artist, [or_now_playing('lfm_artist')])
 
     def albums(self, irc, msg, args, artist):
         """[artist]
@@ -1242,7 +1242,7 @@ class Lastfm(callbacks.Plugin):
         except LastfmError, e:
             out = error_msg(msg, e)
         self.reply(irc, msg.args, out)
-    albums = wrap(albums, [or_now_playing('artist')])
+    albums = wrap(albums, [or_now_playing('lfm_artist')])
 
     def similar(self, irc, msg, args, artist):
         """[artist]
@@ -1256,7 +1256,7 @@ class Lastfm(callbacks.Plugin):
         except LastfmError, e:
             out = error_msg(msg, e)
         self.reply(irc, msg.args, out)
-    similar = wrap(similar, [or_now_playing('artist')])
+    similar = wrap(similar, [or_now_playing('lfm_artist')])
 
     def recent(self, irc, msg, args, name):
         """[user]
@@ -1369,7 +1369,7 @@ class Lastfm(callbacks.Plugin):
             self.reply(irc, msg.args, out)
         out = "tags: took %.6fs"
         log.info(out % (perf.results()['time']))
-    tags = wrap(tags, [or_now_playing('artist')])
+    tags = wrap(tags, [or_now_playing('lfm_artist')])
 
     def tagged(self, irc, msg, args, tag):
         """<tag>
@@ -1384,7 +1384,7 @@ class Lastfm(callbacks.Plugin):
             out = error_msg(msg, e)
         with mores(250):
             self.reply(irc, msg.args, out)
-    tagged = wrap(tagged, ['tag'])
+    tagged = wrap(tagged, ['lfm_tag'])
 
     def multitagged(self, irc, msg, args, text):
         """<tag>[, <tag>...]
@@ -1446,7 +1446,7 @@ class Lastfm(callbacks.Plugin):
             tags = filter_tags(tags)
             out = "[%s.tags %s]: %s" % (
                     group.name,
-                    period['period'],
+                    period['lfm_period'],
                     ', '.join(["%s" % (t.name) for t in tags]) or 'none')
         except LastfmError, e:
             out = error_msg(msg, e)
@@ -1471,7 +1471,7 @@ class Lastfm(callbacks.Plugin):
             charts = getWeeklyArtistChart(group, period['start'], period['end'])
             artists = compileArtists(charts)
 
-            out = "[%s.artists %s]: %s" % (group.name, period['period'],\
+            out = "[%s.artists %s]: %s" % (group.name, period['lfm_period'],\
                     ', '.join(["%s [%s]" % (a.name, a.stats.playcount)
                                for a in sorted(artists, key=lambda x: x.stats.playcount, reverse=True)]) or 'none')
         except LastfmError, e:
@@ -1567,7 +1567,7 @@ class Lastfm(callbacks.Plugin):
 
             ta = sorted(tagged_artists, key=lambda x: x[2], reverse=True)
 
-            out = "[%s.artists %s]:" % (account.name, period['period'])
+            out = "[%s.artists %s]:" % (account.name, period['lfm_period'])
             if len(ta):
                 out = "%s %s" % (out, ', '.join(["%s (%d @ %d%%)" % (n[0].name, n[0].stats.playcount,
                                                                      n[2] / n[0].stats.playcount)
@@ -1599,7 +1599,7 @@ class Lastfm(callbacks.Plugin):
             tags = account.getTopTags(period['start'], period['end'])
             tags = filter_tags(tags)
             out = "[%s.tags %s]: %s" % (account.name,
-                                            period['period'],
+                                            period['lfm_period'],
                                             ', '.join(["%s" % (t.name) for t in tags]) or 'none')
         except LastfmError, e:
             out = error_msg(msg, e)
@@ -1624,13 +1624,13 @@ class Lastfm(callbacks.Plugin):
         account = find_account(irc, msg, name)
 
         try:
-            if period['period'] in fast_periods:
-                artists = account.getTopArtists(period['period'])
+            if period['lfm_period'] in fast_periods:
+                artists = account.getTopArtists(period['lfm_period'])
             else:
                 charts = getWeeklyArtistChart(account, period['start'], period['end'])
                 artists = compileArtists(charts)
 
-            out = "[%s.artists %s]: %s" % (account.name, period['period'],\
+            out = "[%s.artists %s]: %s" % (account.name, period['lfm_period'],\
                     ', '.join(["%s [%s]" % (a.name, a.stats.playcount)
                                for a in sorted(artists, key=lambda x: x.stats.playcount, reverse=True)]) or 'none')
         except LastfmError, e:
@@ -1639,7 +1639,7 @@ class Lastfm(callbacks.Plugin):
 
         try:
             out = "myartists: took %.2fs" % perf.results()['time']
-            if period['period'] not in fast_periods:
+            if period['lfm_period'] not in fast_periods:
                 charts = getWeeklyChartList(account)
                 (start_chart, end_chart) = chart_range(period['start'], period['end'], charts)
                 out += " -- wanted %s to %s, using %s to %s" % \
@@ -1732,7 +1732,7 @@ class Lastfm(callbacks.Plugin):
         Stupid number that means nothing
         """
         threading.Thread(target=self.eclectic_thread, args=(irc, msg, args, user)).start()
-    eclectic = wrap(eclectic, [optional('user', default="")])
+    eclectic = wrap(eclectic, [optional('lfm_user', default="")])
 
     def super_eclectic(self, irc, msg, args, user):
         """<user>
@@ -1754,7 +1754,7 @@ class Lastfm(callbacks.Plugin):
         """
         irc.reply("'%s' may take a while" % command_name(msg), private=True, notice=True)
         threading.Thread(target=self.gtags_thread, args=(irc, msg, args, period, group)).start()
-    gtags = wrap(gtags, [optional('period'), 'group'])
+    gtags = wrap(gtags, [optional('lfm_period'), 'lfm_group'])
 
     def gartists(self, irc, msg, args, period, group):
         """[o|w|3|6|12|m|d <days>] <group>
@@ -1762,7 +1762,7 @@ class Lastfm(callbacks.Plugin):
         """
         irc.reply("'%s' may take a while" % command_name(msg), private=True, notice=True)
         threading.Thread(target=self.gartists_thread, args=(irc, msg, args, period, group)).start()
-    gartists = wrap(gartists, [optional('period'), 'group'])
+    gartists = wrap(gartists, [optional('lfm_period'), 'lfm_group'])
 
     def mytags(self, irc, msg, args, period, user):
         """[o|w|3|6|12|d <days>] [user]
@@ -1770,14 +1770,14 @@ class Lastfm(callbacks.Plugin):
         """
         irc.reply("'%s' may take a while" % command_name(msg), private=True, notice=True)
         threading.Thread(target=self.mytags_thread, args=(irc, msg, args, period, user)).start()
-    mytags = wrap(mytags, [optional('period'), optional('something')])
+    mytags = wrap(mytags, [optional('lfm_period'), optional('something')])
 
     def myartists(self, irc, msg, args, period, user):
         """[o|w|3|6|12|m|d <days>] [user]
         Returns top artists for [user] over period
         """
         threading.Thread(target=self.myartists_thread, args=(irc, msg, args, period, user)).start()
-    myartists = wrap(myartists, [optional('period'), optional('something')])
+    myartists = wrap(myartists, [optional('lfm_period'), optional('something')])
 
     def myrecs(self, irc, msg, args, period, user):
         """[user]
@@ -1785,7 +1785,7 @@ class Lastfm(callbacks.Plugin):
         """
         irc.reply("'%s' may take a while" % command_name(msg), private=True, notice=True)
         threading.Thread(target=self.myrecs_thread, args=(irc, msg, args, period, user)).start()
-    myrecs = wrap(myrecs, [optional('period'), optional('something')])
+    myrecs = wrap(myrecs, [optional('lfm_period'), optional('something')])
 
     def heardtag(self, irc, msg, args, period, user, tag):
         """[o|w|3|6|12|m|d <days>] <user> <tag>
@@ -1793,7 +1793,7 @@ class Lastfm(callbacks.Plugin):
         """
         irc.reply("'%s' may take a while" % command_name(msg), private=True, notice=True)
         threading.Thread(target=self.utagged_thread, args=(irc, msg, args, period, user, tag)).start()
-    heardtag = wrap(heardtag, [optional('period'), 'something', 'tag'])
+    heardtag = wrap(heardtag, [optional('lfm_period'), 'something', 'lfm_tag'])
 
     def heardartist(self, irc, msg, args, artist):
         """<artist>
@@ -1801,7 +1801,7 @@ class Lastfm(callbacks.Plugin):
         """
         irc.reply("'%s' may take a while" % command_name(msg), private=True, notice=True)
         threading.Thread(target=self.heard_artist_thread, args=(irc, msg, args, artist)).start()
-    heardartist = wrap(heardartist, [or_now_playing('artist')])
+    heardartist = wrap(heardartist, [or_now_playing('lfm_artist')])
 
     def whatsplaying_thread(self, irc, msg, args):
         """Returns what is playing"""
@@ -1946,7 +1946,7 @@ class Lastfm(callbacks.Plugin):
         except LastfmError, e:
             out = error_msg(msg, e)
         self.reply(irc, msg.args, out)
-    bio = wrap(bio, [or_now_playing('artist')])
+    bio = wrap(bio, [or_now_playing('lfm_artist')])
 
     def compare(self, irc, msg, args, user1, user2):
         """<user1> [user2]
@@ -1993,7 +1993,7 @@ class Lastfm(callbacks.Plugin):
         except LastfmError, e:
             out = error_msg(msg, e)
         self.reply(irc, msg.args, out)
-    heard = wrap(heard, ['user', or_now_playing('artist')])
+    heard = wrap(heard, ['lfm_user', or_now_playing('lfm_artist')])
 
     def neighbours(self, irc, msg, args, user):
         """[user]
