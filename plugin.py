@@ -7,13 +7,9 @@ import re
 import sys
 import operator
 import threading
-#import supybot.utils as utils
-from supybot.commands import getText, addConverter, wrap, optional, commalist
-from supybot.commands import context
-#import supybot.plugins as plugins
-#import supybot.ircutils as ircutils
+
+from supybot.commands import getText, addConverter, wrap, optional, commalist, context
 import supybot.callbacks as callbacks
-#import supybot.ircmsgs as ircmsgs
 import supybot.conf as conf
 import supybot.ircdb as ircdb
 import supybot.log as supy_log
