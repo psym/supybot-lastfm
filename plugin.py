@@ -1728,7 +1728,7 @@ class Lastfm(callbacks.Plugin):
         Stupid number that means nothing
         """
         threading.Thread(target=self.eclectic_thread, args=(irc, msg, args, user)).start()
-    eclectic = wrap(eclectic, [optional('lfm_user', default="")])
+    eclectic = wrap(eclectic, [optional('something', default="")])
 
     def super_eclectic(self, irc, msg, args, user):
         """<user>
