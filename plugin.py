@@ -1061,7 +1061,7 @@ def find_account(irc, msg, user=None):
                     other = find_from_nick(irc.network, nick)
                     if other:
                         print "%s @ %s conflicts with %s @ %s" % (nick, host, other['nick'], other.get('host'))
-                        return item['account']
+                        return User(item['account'])
                     print item['nick']
                     item['nick'].append(nick)
                     account_coll.update({'host': host, 'network': irc.network}, item, upsert=True, multi=False)
@@ -1887,7 +1887,8 @@ class Lastfm(callbacks.Plugin):
         """
         account_coll = pymongo.Connection().anni.account
 
-        host = db_key_clean(msg.host)
+        host = hostmask_clean(irc.state.nickToHostmask(msg.nick))
+        #host = db_key_clean(msg.host)
         nick = db_key_clean(msg.nick)
         item = account_coll.find_one({'host': host, 'network': irc.network})
         if item:
