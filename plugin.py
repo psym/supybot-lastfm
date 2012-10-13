@@ -81,7 +81,7 @@ def overall_period():
             'end': datetime.now()}
 
 
-#[3|6|12|o|w|m|d <days>]
+#[3|6|12|o|w [weeks]|m [months]|d <days>]
 #returns (period, days)
 def getPeriod(irc, msg, args, state):
     now = datetime.now()
@@ -101,15 +101,29 @@ def getPeriod(irc, msg, args, state):
                            'end': now})
         args.pop(0)
     elif args[0] == '-w':
-        state.args.append({'lfm_period': '7day',
-                           'start': now - timedelta(7),
-                           'end': now})
-        args.pop(0)
+        try:
+            weeks = int(args[1])
+            state.args.append({'lfm_period': '%d weeks' % weeks,
+                               'start': now - timedelta(7*weeks),
+                               'end': now})
+            del args[:2]
+        except:
+            state.args.append({'lfm_period': '1 week',
+                               'start': now - timedelta(7),
+                               'end': now})
+            args.pop(0)
     elif args[0] == '-m':
-        state.args.append({'lfm_period': '1month',
-                           'start': now - timedelta(30),
-                           'end': now})
-        args.pop(0)
+        try:
+            months = int(args[1])
+            state.args.append({'lfm_period': '%d months' % months,
+                               'start': now - timedelta(30*months),
+                               'end': now})
+            del args[:2]
+        except:
+            state.args.append({'lfm_period': '1 month',
+                               'start': now - timedelta(30),
+                               'end': now})
+            args.pop(0)
     elif args[0] == '-o':
         state.args.append(overall_period())
         args.pop(0)
@@ -837,15 +851,20 @@ def getWeeklyArtistChart(target, start=None, end=None):
                   our_type: target.name,
                   'from': int(mktime(c.start.timetuple())),
                   'to': int(mktime(c.end.timetuple()))}
-        data = fetch(api_url_base, params, None)
+        try:
+            data = fetch(api_url_base, params, None)
 
-        artist_charts.append(
-            WeeklyArtistChart(
-                start=c.start,
-                end=c.end,
-                artists=[Artist(artist_elem.find('name').text,
-                                stats=Stats(playcount=artist_elem.find('playcount').text))
-                         for artist_elem in data.findall('weeklyartistchart/artist')]))
+            artist_charts.append(
+                WeeklyArtistChart(
+                    start=c.start,
+                    end=c.end,
+                    artists=[Artist(artist_elem.find('name').text,
+                                    stats=Stats(playcount=artist_elem.find('playcount').text))
+                             for artist_elem in data.findall('weeklyartistchart/artist')]))
+        except LastfmError, e:
+            log.info( "skipping from %s to %s: %s" % ( params['from'], params['to'], str(e) ) )
+
+
     return artist_charts
 
 
@@ -1745,7 +1764,7 @@ class Lastfm(callbacks.Plugin):
     akin = wrap(akin, [optional('something')])
 
     def gtags(self, irc, msg, args, period, group):
-        """[o|w|3|6|12|m|d <days>] <group>
+        """[o|w [weeks]|3|6|12|m [months]|d <days>] <group>
         Returns tags for group over period
         """
         irc.reply("'%s' may take a while" % command_name(msg), private=True, notice=True)
@@ -1753,7 +1772,7 @@ class Lastfm(callbacks.Plugin):
     gtags = wrap(gtags, [optional('lfm_period'), 'lfm_group'])
 
     def gartists(self, irc, msg, args, period, group):
-        """[o|w|3|6|12|m|d <days>] <group>
+        """[o|w [weeks]|3|6|12|m [months]|d <days>] <group>
         Returns top artists for group over period
         """
         irc.reply("'%s' may take a while" % command_name(msg), private=True, notice=True)
@@ -1761,7 +1780,7 @@ class Lastfm(callbacks.Plugin):
     gartists = wrap(gartists, [optional('lfm_period'), 'lfm_group'])
 
     def mytags(self, irc, msg, args, period, user):
-        """[o|w|3|6|12|d <days>] [user]
+        """[o|w [weeks]|3|6|12|m [months]|d <days>] [user]
         Returns tags for user over period
         """
         irc.reply("'%s' may take a while" % command_name(msg), private=True, notice=True)
@@ -1769,7 +1788,7 @@ class Lastfm(callbacks.Plugin):
     mytags = wrap(mytags, [optional('lfm_period'), optional('something')])
 
     def myartists(self, irc, msg, args, period, user):
-        """[o|w|3|6|12|m|d <days>] [user]
+        """[o|w [weeks]|3|6|12|m [months]|d <days>] [user]
         Returns top artists for [user] over period
         """
         threading.Thread(target=self.myartists_thread, args=(irc, msg, args, period, user)).start()
@@ -1784,7 +1803,7 @@ class Lastfm(callbacks.Plugin):
     myrecs = wrap(myrecs, [optional('lfm_period'), optional('something')])
 
     def heardtag(self, irc, msg, args, period, user, tag):
-        """[o|w|3|6|12|m|d <days>] <user> <tag>
+        """[o|w [weeks]|3|6|12|m [months]|d <days>] <user> <tag>
         Returns top artists user has heard with tag.
         """
         irc.reply("'%s' may take a while" % command_name(msg), private=True, notice=True)
