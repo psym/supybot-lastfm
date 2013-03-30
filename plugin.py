@@ -1833,8 +1833,19 @@ class Lastfm(callbacks.Plugin):
 
             try:
                 track = account.getRecentTracks(limit=1)
+
+                timelimit = datetime.now() - timedelta( minutes=10 )
+                now_playing = True
                 if track[0].now_playing:
                     time_tag = now_playing_position(track)
+
+                elif track[0].played_on > timelimit:
+                    minutes_ago = int( (track[0].played_on - timelimit).seconds / 60 )
+                    time_tag = "[~%s minute ago]" % minutes_ago
+                else:
+                    now_playing = False
+
+                if now_playing:
                     tags = now_playing_tags(track[0])
 
                     tag_str = ""
@@ -1884,8 +1895,27 @@ class Lastfm(callbacks.Plugin):
                 else:
                     out = "[%s.playing]:" % account.name
 
-                if track and track[0] and track[0].now_playing:
-                    time_tag = now_playing_position(track)
+                if track and track[0]:
+                    print "played on: %s" % track[0].played_on
+
+                    if track[0].now_playing:
+                        time_tag = now_playing_position(track)
+                    else:
+                        last_play = datetime.now() - track[0].played_on
+
+                        # seconds
+                        if last_play.days == 0 and last_play.seconds < 60:
+                            time_tag = "[%s seconds ago]" % last_play.seconds
+                        # minutes
+                        elif last_play.days == 0 and last_play.seconds < 3600:
+                            time_tag = "[%s minutes ago]" % int(last_play.seconds / 60 )
+                        # hours
+                        elif last_play.days == 0:
+                            time_tag = "[~%s hours ago]" % int(last_play.seconds / 3600 )
+
+                        else:
+                            time_tag = "[~%s days ago]" % last_play.days
+
                     tags = now_playing_tags(track[0])
 
                     tag_str = ""
