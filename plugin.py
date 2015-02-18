@@ -1093,7 +1093,7 @@ def find_account(irc, msg, user=None):
     #look up caller nick
     item = find_from_nick(irc.network, user)
     if item:
-        if caller_self:
+        if caller_self and host:
             item['host'] = host
             account_coll.update({'nick': user.replace('.', '_').lower(), 'network': irc.network},
                                 item, upsert=True, multi=False)
@@ -1283,9 +1283,10 @@ class Lastfm(callbacks.Plugin):
 
         try:
             account = find_account(irc, msg, name)
+            target = name or msg.nick
             tracks = account.getRecentTracks()
             now = datetime.now()
-            out = "[%s.recent]: %s" % (account.name, ', '.join(["%s - %s (%d hrs)" %  \
+            out = "[%s.recent]: %s" % (target, ', '.join(["%s - %s (%d hrs)" %  \
                            (t.artist.name, t.name, -diff_hrs(now, t.played_on)) for t in tracks]) or 'none')
         except LastfmError, e:
             out = error_msg(msg, e)
@@ -1567,6 +1568,7 @@ class Lastfm(callbacks.Plugin):
         perf = CachePerf()
         period = period or overall_period()
         account = find_account(irc, msg, name)
+        target = name or msg.nick
 
         try:
             artists = compileArtists(getWeeklyArtistChart(account, period['start'], period['end']))
@@ -1582,7 +1584,7 @@ class Lastfm(callbacks.Plugin):
 
             ta = sorted(tagged_artists, key=lambda x: x[2], reverse=True)
 
-            out = "[%s.artists %s]:" % (account.name, period['lfm_period'])
+            out = "[%s.artists %s]:" % (target, period['lfm_period'])
             if len(ta):
                 out = "%s %s" % (out, ', '.join(["%s (%d @ %d%%)" % (n[0].name, n[0].stats.playcount,
                                                                      n[2] / n[0].stats.playcount)
@@ -1609,11 +1611,12 @@ class Lastfm(callbacks.Plugin):
         perf = CachePerf()
         period = period or overall_period()
         account = find_account(irc, msg, name)
+        target = name or msg.nick
 
         try:
             tags = account.getTopTags(period['start'], period['end'])
             tags = filter_tags(tags)
-            out = "[%s.tags %s]: %s" % (account.name,
+            out = "[%s.tags %s]: %s" % (target,
                                             period['lfm_period'],
                                             ', '.join(["%s" % (t.name) for t in tags]) or 'none')
         except LastfmError, e:
@@ -1637,6 +1640,7 @@ class Lastfm(callbacks.Plugin):
         period = period or overall_period()
         fast_periods = ('overall', '7day', '3month', '6month', '12month')
         account = find_account(irc, msg, name)
+        target = name or msg.nick
 
         try:
             if period['lfm_period'] in fast_periods:
@@ -1645,7 +1649,7 @@ class Lastfm(callbacks.Plugin):
                 charts = getWeeklyArtistChart(account, period['start'], period['end'])
                 artists = compileArtists(charts)
 
-            out = "[%s.artists %s]: %s" % (account.name, period['lfm_period'],\
+            out = "[%s.artists %s]: %s" % (target, period['lfm_period'],\
                     ', '.join(["%s [%s]" % (a.name, a.stats.playcount)
                                for a in sorted(artists, key=lambda x: x.stats.playcount, reverse=True)]) or 'none')
         except LastfmError, e:
@@ -1671,6 +1675,7 @@ class Lastfm(callbacks.Plugin):
         period = period or overall_period()
 
         account = find_account(irc, msg, name)
+        target = name or msg.nick
 
         try:
             neighbours = account.getNeighbours(limit=10)
@@ -1696,7 +1701,7 @@ class Lastfm(callbacks.Plugin):
             for k, v in global_artists.items():
                 global_artists[k].stats.weight /= float(global_artists[k].stats.count)
 
-            hdr = "[%s.recs]:" % account.name
+            hdr = "[%s.recs]:" % target
             out = "%s %s" % (hdr,
                              ', '.join(["%s [%.2f]" % (a.name, a.stats.weight)
                                         for a in sorted(global_artists.values(),
@@ -1726,6 +1731,7 @@ class Lastfm(callbacks.Plugin):
 
     def eclectic_thread(self, irc, msg, args, name, num_top=20, num_sim=5):
         account = find_account(irc, msg, name)
+        target = name or msg.nick
         try:
             top20 = account.getTopArtists()[:num_top]
             artists = {}
@@ -1737,7 +1743,7 @@ class Lastfm(callbacks.Plugin):
                         artists[s.name] += 1
                     else:
                         artists[s.name] = 1
-            out = "[%s.eclectic]: %d/%d" % (account.name, len(artists), num_top * num_sim)
+            out = "[%s.eclectic]: %d/%d" % (target, len(artists), num_top * num_sim)
         except LastfmError, e:
             out = error_msg(msg, e)
         self.reply(irc, msg.args, out)
@@ -1893,7 +1899,7 @@ class Lastfm(callbacks.Plugin):
                 if use_nick:
                     out = "[%s.playing]:" % msg.nick
                 else:
-                    out = "[%s.playing]:" % account.name
+                    out = "[%s.playing]:" % user #account.name
 
                 if track and track[0]:
                     print "played on: %s" % track[0].played_on
@@ -2001,8 +2007,10 @@ class Lastfm(callbacks.Plugin):
         ignore_tags = ["electronic", "experimental", "electronica", "seen live"]
         if user2:
             left, right = find_account(irc, msg, user1), find_account(irc, msg, user2)
+            target1, target2 = user1, user2
         else:
             left, right = find_account(irc, msg), find_account(irc, msg, user1)
+            target1, target2 = msg.nick, user1
 
         try:
             taste = taste_compare(left, right, limit=10)
@@ -2014,7 +2022,7 @@ class Lastfm(callbacks.Plugin):
             tags = sorted(tags.iteritems(), key=operator.itemgetter(1), reverse=True)
 
             out = "[%s.compare.%s]: %s (%.2f%%) %s feat. %s" % \
-                    (left.name, right.name, \
+                    (target1, target2, \
                      taste.score_name(), taste.stats.score * 100, \
                      ', '.join(['%s' % t[0] for t in tags[:3] if tags]), \
                      ', '.join(["%s" % a.name for a in taste.artists]) or 'nothing')
@@ -2023,10 +2031,13 @@ class Lastfm(callbacks.Plugin):
         self.reply(irc, msg.args, out)
     compare = wrap(compare, ['something', optional('something')])
 
-    def heard(self, irc, msg, args, account, artist):
+    def heard(self, irc, msg, args, name, artist):
         """<user> [artist]
         Has user listened to artist or your currently playing artist
         """
+        account = find_account(irc, msg, name)
+        target = name or msg.nick
+
         try:
             taste = taste_compare(account, artist)
             if len(taste.artists) == 0:
@@ -2035,22 +2046,23 @@ class Lastfm(callbacks.Plugin):
                 found = ', '.join([t.name for t in taste.artists])
             else:
                 found = taste.artists[0].name
-            out = "[%s.heard]: %s" % (account.name, found)
+            out = "[%s.heard]: %s" % (target, found)
         except LastfmError, e:
             out = error_msg(msg, e)
         self.reply(irc, msg.args, out)
-    heard = wrap(heard, ['lfm_user', or_now_playing('lfm_artist')])
+    heard = wrap(heard, ['something', or_now_playing('lfm_artist')])
 
     def neighbours(self, irc, msg, args, user):
         """[user]
         Returns neighbours of [user]
         """
         account = find_account(irc, msg, user)
+        target = user or msg.nick
+
         try:
             n = account.getNeighbours()
-            neighbours = ', '.join(["%s [%.2f]" % (u.name, u.stats.match * 100)
-                                    for u in n]) or 'none'
-            out = "[%s.neighbours]: %s" % (account.name, neighbours)
+            neighbours = ', '.join(["%s [%.2f]" % (u.name, u.stats.match * 100) for u in n]) or 'none'
+            out = "[%s.neighbours]: %s" % (target, neighbours)
         except LastfmError, e:
             out = error_msg(msg, e)
         self.reply(irc, msg.args, out)
