@@ -36,6 +36,7 @@ from localsettings import api_key
 
 discogs_url_base = "http://discogs/com/"
 api_url_base = "http://localhost:6081/2.0/?api_key=%s" % api_key
+#api_url_base = "http://ws.audioscrobbler.com/2.0/?api_key=%s" % api_key
 db = pymongo.Connection().anni.cache
 legacy_userdb = DictDB(os.path.join(conf.supybot.directories.data(), 'users.pklz'), mode=0600)
 
@@ -249,7 +250,6 @@ class Tag(object):
         data = fetch(api_url_base, params, None)
 
         return [Artist(artist_elem.find('name').text,
-                       mbid=artist_elem.find('mbid').text,
                        url=artist_elem.find('url').text,
                        stats=Stats(rank=artist_elem.attrib['rank']))
                 for artist_elem in data.findall('topartists/artist')]
@@ -294,13 +294,11 @@ class Tag(object):
 
 class Artist(object):
     def __init__(self, name=None,
-                       mbid=None,
                        url=None,
                        stats=None,
                        tags=None,
                        bio=""):
         self.name = name
-        self.mbid = mbid
         self.url = url
         self._stats = stats
         self._tags = tags
@@ -369,7 +367,6 @@ class Artist(object):
         data = fetch(api_url_base, params, None)
 
         return [Artist(artist_elem.find('name').text,
-                       mbid=artist_elem.find('mbid').text,
                        url=artist_elem.find('url').text,
                        stats=Stats(match=artist_elem.find('match').text))
                 for artist_elem in data.findall('similarartists/artist')]
@@ -386,7 +383,6 @@ class Artist(object):
     def getInfo(self, username=None, lang=None, autocorrect=1):
         params = {'method': 'artist.getInfo',
                   'artist': self.name,
-                  'mbid': self.mbid,
                   'username': username,
                   'lang': lang,
                   'autocorrect': autocorrect}
@@ -400,7 +396,6 @@ class Artist(object):
                 return None
 
         a = Artist(artist_elem.find('name').text,
-                      mbid=artist_elem.find('mbid').text,
                       url=artist_elem.find('url').text,
                       stats=Stats(listeners=artist_elem.find('stats/listeners').text,
                                   playcount=artist_elem.find('stats/playcount').text,
@@ -412,7 +407,6 @@ class Artist(object):
     def getBio(self, username=None, lang=None, autocorrect=1):
         params = {'method': 'artist.getInfo',
                   'artist': self.name,
-                  'mbid': self.mbid,
                   'username': username,
                   'lang': lang,
                   'autocorrect': autocorrect}
@@ -435,7 +429,6 @@ class Artist(object):
         artist = data.find('topalbums').attrib['artist']
         return [Album(album_elem.find('name').text,
                       artist=artist,
-                      mbid=album_elem.find('mbid').text,
                       url=album_elem.find('url').text,
                       stats=Stats(playcount=album_elem.find('playcount').text,
                                   rank=album_elem.attrib['rank']))
@@ -450,7 +443,6 @@ class Artist(object):
         data = fetch(api_url_base, params, None)
 
         return [Artist(name=elem.find('name').text,
-                       mbid=elem.find('mbid').text,
                        url=elem.find('url').text)
                 for elem in data.findall('results/artistmatches/artist')]
 
@@ -459,7 +451,6 @@ class Track(object):
     def __init__(self, name=None,
                        artist=None,
                        album=None,
-                       mbid=None,
                        url=None,
                        stats=None,
                        played_on=None,
@@ -468,7 +459,6 @@ class Track(object):
         self.name = name
         self.artist = artist
         self.album = album
-        self.mbid = mbid
         self.url = url
         self.stats = stats
         self.played_on = played_on
@@ -480,17 +470,13 @@ class Track(object):
 
     def getInfo(self, autocorrect=1):
         params = {'method': 'track.getInfo', 'autocorrect': autocorrect}
-        if self.mbid:
-            params['mbid'] = self.mbid
-        else:
-            params['artist'] = self.artist.name
-            params['track'] = self.name
+        params['artist'] = self.artist.name
+        params['track'] = self.name
         data = fetch(api_url_base, params, None)
 
         track_elem = data.find('track')
 
         return Track(track_elem.find('name').text,
-                     mbid=track_elem.find('mbid').text,
                      url=track_elem.find('url').text,
                      stats=Stats(listeners=track_elem.find('listeners').text,
                                  playcount=track_elem.find('playcount').text),
@@ -570,9 +556,31 @@ class Album(object):
     def __init__(self, name=None, artist=None, mbid=None, url=None, stats=None):
         self.name = name
         self.artist = artist
-        self.mbid = mbid
         self.url = url
         self.stats = stats or Stats()
+        self.releasedate = None
+
+    def getInfo(self, autocorrect=1):
+        params = {'method': 'album.getInfo',
+                  'artist': self.artist,
+                  'album': self.name,
+                  'autocorrect': autocorrect}
+
+        data = fetch(api_url_base, params, None)
+
+        album = Album(name=data.find('album/name').text,
+                      artist=data.find('album/artist').text,
+                      url=data.find('album/url').text,
+                      stats=Stats(playcount=data.find('album/playcount'),
+                                  listeners=data.find('album/listeners')))
+        # 5 Jul 2005, 00:00
+        date = data.find('album/releasedate').text.lstrip()
+        if date:
+            if date[1] == ' ':
+                date = '0' + date
+            album.releasedate = datetime.strptime(date, '%d %b %Y, %H:%M')
+
+        return album
 
     def __repr__(self):
         return "<Album: %s>" % self.name
@@ -594,7 +602,6 @@ def library_getArtists(user, limit=50, page=None):
     data = fetch(api_url_base, params, None)
 
     return [Artist(artist_elem.find('name').text,
-                   mbid=artist_elem.find('mbid').text,
                    url=artist_elem.find('url').text,
                    stats=Stats(rank=artist_elem.attrib['rank'],
                                playcount=artist_elem.find('playcount').text))
@@ -608,7 +615,6 @@ def library_getAllArtists(user):
     have_pages = data.find('artists').attrib['total_pages'] + 1
     while have_pages:
         artists.append([Artist(artist_elem.find('name').text,
-                               mbid=artist_elem.find('mbid').text,
                                url=artist_elem.find('url').text,
                                stats=Stats(rank=artist_elem.attrib['rank'],
                                            playcount=artist_elem.find('playcount').text))
@@ -648,7 +654,6 @@ class User(object):
         data = fetch(api_url_base, params, None)
 
         return [Artist(artist_elem.find('name').text,
-                       mbid=artist_elem.find('mbid').text,
                        url=artist_elem.find('url').text,
                        stats=Stats(rank=artist_elem.attrib['rank'],
                                    playcount=artist_elem.find('playcount').text))
@@ -1050,6 +1055,13 @@ def find_account(irc, msg, user=None):
         print "update %s on %s with %s: %s" % (nick, irc.network, acc, pymongo.Connection().anni.error())
         return acc
 
+    try:
+        hostmask = irc.state.nickToHostmask(user)
+        print "hostmask: %s" % hostmask_clean(hostmask)
+        print msg.host
+    except:
+        pass
+
     if user and user != msg.nick:
         try:
             print "find_account user: %s" % user
@@ -1131,7 +1143,6 @@ def doc_to_artist(doc):
         tags = []
 
     artist = Artist(doc['name'],
-                    mbid=doc.get('mbid'),
                     url=doc.get('url'),
                     stats=stats,
                     tags=tags,
@@ -1147,7 +1158,6 @@ def artist_to_doc(artist):
         tags = None
 
     return {'name': artist.name,
-            'mbid': artist.mbid,
             'url': artist.url,
             'bio': artist.bio,
             'stats': stats,
@@ -1250,10 +1260,11 @@ class Lastfm(callbacks.Plugin):
         Returns albums for artist or your currently playing artist
         """
         try:
-            albums = artist.getTopAlbums()
+            albums = [a.getInfo() for a in artist.getTopAlbums()]
+
             out = "[%s.albums]: %s" % (
                     artist.name,
-                    ', '.join(["%s [%d]" % (a.name, a.stats.playcount) for a in albums]) or 'none')
+                    ', '.join(["%s (%s)" % (a.name, a.releasedate.year if a.releasedate else 'n/a') for a in albums]) or 'none')
         except LastfmError, e:
             out = error_msg(msg, e)
         self.reply(irc, msg.args, out)
@@ -1817,8 +1828,8 @@ class Lastfm(callbacks.Plugin):
     heardtag = wrap(heardtag, [optional('lfm_period'), 'something', 'lfm_tag'])
 
     def heardartist(self, irc, msg, args, artist):
-        """<artist>
-        Returns users that have heard artist.
+        """[artist]
+        Returns users that have heard artist or your currently playing artist
         """
         irc.reply("'%s' may take a while" % command_name(msg), private=True, notice=True)
         threading.Thread(target=self.heard_artist_thread, args=(irc, msg, args, artist)).start()
@@ -1955,6 +1966,7 @@ class Lastfm(callbacks.Plugin):
             item = {'host': host, 'network': irc.network, 'nick': [nick]}
         item['account'] = name
 
+        print item
         account_coll.update({'host': host, 'network': irc.network}, item, upsert=True, multi=False)
         self.error(irc, "%s@%s set account to %s" % (nick, host, name))
     account = wrap(account, ['something'])
